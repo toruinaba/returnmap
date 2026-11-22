@@ -35,6 +35,7 @@ guide/adding-a-model
 guide/model-python
 guide/model-hand-written
 guide/model-umat
+guide/spec-driven
 ```
 
 ```{toctree}

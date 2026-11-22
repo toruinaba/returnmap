@@ -46,6 +46,8 @@ PAGES = {
     "docs/guide/verification.md": ["examples/example_checks.py"],
     # The hooks page shows the source of shipped models, and no output.
     "docs/guide/writing-models.md": [],
+    # The specification page shows the templates of the example family.
+    "docs/guide/spec-driven.md": [],
 }
 # Where the code of a page may come from.
 CODE_ROOTS = [REPO / "examples", REPO / "src" / "returnmap", REPO / "tests"]

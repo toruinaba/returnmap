@@ -28,6 +28,19 @@
   `--range` は `check_range` も実行する。`--require-built` は、宣言されているがビルドしていない UMAT を
   不合格に数える(指定しなければ、今までどおり `not built` として合格に数える)。
 
+**文書と例**
+
+- **「仕様書から実装する」のページを足した。** ファミリの `README.md` を仕様書として書き、それをもとに実装を
+  依頼し、結果を確認する手順である。仕様書は「完成時の文書に空欄がある状態」として書く(書いてある節には
+  従い、`(未記入)` の節は実装した者が書く)。雛形、節ごとの書き方の規則、指示文、確認の項目を示す。
+- **雛形(`examples/model_family/`)に、仕様書と指示文の雛形(`templates/`)、`Makefile`、`Dockerfile`、
+  `.gitignore` を足した。** `make docker-check` は、コンテナの中で UMAT をビルドし、テストと
+  `returnmap check --require-built` を実行する。`.gitignore` は、ビルド先の `fortran/` だけを無視する
+  (`fortran/` と書くと、ファミリの UMAT のソースのディレクトリも無視される)。
+- **雛形の Voce のファミリを、仕様書の形にした。** README に、出典、量の種別、性質(P1〜P8)、近似、UMAT の
+  インターフェース、検証(対象、報告、範囲)を書いた。性質を 1 つずつテストにした
+  (`tests/test_properties.py`)。README の「報告」は `returnmap check` の出力で、テストが照合する。
+
 **変更**
 
 - **`returnmap build --family` は、UMAT を 1 つも宣言していないパッケージに対して、何もビルドせずに

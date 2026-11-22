@@ -51,7 +51,7 @@ def test_the_family_passes_its_checks(project):
     root, env = project
     proc = _run(["-m", "pytest", "-q", "-p", "no:cacheprovider"], root, env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "2 passed, 1 skipped" in proc.stdout, proc.stdout
+    assert "20 passed, 1 skipped" in proc.stdout, proc.stdout
 
 
 def test_what_the_report_says_follows_from_what_each_model_declares(project):
@@ -93,4 +93,60 @@ def test_the_umat_builds_and_agrees(project):
 
     proc = _run(["-m", "pytest", "-q", "-p", "no:cacheprovider"], root, env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "3 passed" in proc.stdout, proc.stdout
+    assert "21 passed" in proc.stdout, proc.stdout
+
+
+def _masked(line: str) -> str:
+    """A line with its numbers and its column padding taken out."""
+    import re
+
+    return " ".join(re.sub(r"[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?", "#", line).split())
+
+
+@pytest.mark.fortran
+def test_the_report_in_the_specification_is_what_the_check_prints(project):
+    """The family's README records the report of its checks; it is the output
+    of ``returnmap check --require-built --range``, numbers aside."""
+    import re
+
+    if shutil.which("gfortran") is None:
+        pytest.skip("gfortran not found")
+    root, env = project
+    build = _run(["-m", "returnmap", "build", "--family", "mymodels"], root, env)
+    assert build.returncode == 0, build.stdout + build.stderr
+    check = _run(["-m", "returnmap", "check", "--family", "mymodels",
+                  "--require-built", "--range"], root, env)
+    assert check.returncode == 0, check.stdout + check.stderr
+
+    readme = (root / "src" / "mymodels" / "voce" / "README.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"^```none\n(.*?)^```$", readme, flags=re.M | re.S)
+    assert len(blocks) == 1, "the specification records one report"
+    recorded = [_masked(line) for line in blocks[0].splitlines() if line.strip()]
+    printed = [_masked(line) for line in check.stdout.splitlines() if line.strip()]
+    assert recorded == printed
+
+
+def test_the_templates_are_there_and_the_specification_follows_one(project):
+    """The sections of the family's README are those of the template, in order."""
+    import re
+
+    root, _ = project
+
+    def sections(path):
+        text = path.read_text(encoding="utf-8")
+        return [line for line in text.splitlines() if re.match(r"#{2,3} ", line)]
+
+    template = sections(root / "templates" / "family-README.md")
+    family = sections(root / "src" / "mymodels" / "voce" / "README.md")
+    # Only the dimension in one heading is the family's own.
+    assert [re.sub(r"\(.*\)", "()", line) for line in family] == [
+        re.sub(r"\(.*\)", "()", line) for line in template]
+    assert (root / "templates" / "brief.md").is_file()
+
+
+def test_the_check_command_reports_every_declared_model(project):
+    root, env = project
+    proc = _run(["-m", "returnmap", "check", "--family", "mymodels"], root, env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "J2Voce3D: every check that applies passes" in proc.stdout
+    assert proc.stdout.rstrip().endswith("2 model(s) checked: every one passes")
