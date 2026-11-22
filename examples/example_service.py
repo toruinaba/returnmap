@@ -1,89 +1,58 @@
-"""Service contract layer: registry → describe → run_simulation.
+"""サービスに組み込む — レジストリにモデルを登録し、plain な入出力で計算する。
 
-Demonstrates the workflow a web API / job worker builds on:
-- Building a ModelRegistry and listing what it exposes
-- describe() — the GET /models payload (param metadata for UI forms)
-- run_simulation with plain inputs/outputs and a progress callback
-- Non-convergence returned as a value (partial history), not an exception
+文書の「サービスに組み込む」(docs/guide/service.md) のコード。文書のページは、
+このファイルの各節 (``# %%`` の区切り) をそのまま載せている。
 
-Usage
------
     uv run python examples/example_service.py
 """
 
+# %% 1. レジストリ
+from returnmap.service import default_registry
+
+registry = default_registry()                       # 組み込みの 1D モデルを登録したレジストリ
+print(registry.names())
+
+description = registry.describe("j2_isotropic")     # GET /models に相当する情報
+print(description.class_name, description.ntens, description.param_names)
+for name in description.param_names:
+    meta = description.param_meta[name]
+    print(f"{name:9s} {meta.unit:4s} {meta.default:>9}  {meta.bounds}  {meta.doc}")
+
+# %% 2. 計算の実行
 import numpy as np
 
-from returnmap.service import default_registry, run_simulation
+from returnmap.service import run_simulation
 
-# ---------------------------------------------------------------------------
-# 1. Registry — explicit name → template-model mapping (what a deployment
-#    exposes).  A template fixes the class, the dimension and any setting
-#    that is not a parameter; each run puts its own parameters into it.
-# ---------------------------------------------------------------------------
-reg = default_registry()
+params = {name: meta.default for name, meta in description.param_meta.items()}   # 入力フォームの初期値
 
-print("=" * 60)
-print("  Registered models (GET /models)")
-print("=" * 60)
-for name in reg.names():
-    d = reg.describe(name)
-    print(f"\n  {name}  ({d.class_name}, ntens={d.ntens})")
-    print(f"    {d.doc}")
-    for pname in d.param_names:
-        m = d.param_meta[pname]
-        unit = f" [{m.unit}]" if m.unit else ""
-        print(f"    {pname:10s}{unit:7s} default={m.default:<10g} bounds={m.bounds}  — {m.doc}")
-
-# A private-model package would plug in the same way:
-#     from returnmap_internal import MODELS
-#     for name, model in MODELS.items():
-#         reg.register(name, model)
-
-# ---------------------------------------------------------------------------
-# 2. Run — defaults from the descriptor form a runnable parameter set
-#    (the WebUI golden path: auto-filled form → submit)
-# ---------------------------------------------------------------------------
-name = "j2_isotropic"
-d = reg.describe(name)
-params = {k: m.default for k, m in d.param_meta.items()}
-
-progress_log = []
+progress = []
 out = run_simulation(
-    reg.get(name),
+    registry.get("j2_isotropic"),
     params,
-    load=np.linspace(0.0, 5e-3, 200),        # strain history, raw list/array
-    include_fields=["ep"],                    # state output is opt-in
-    progress=lambda done, total: progress_log.append((done, total)),
+    load=np.linspace(0.0, 5e-3, 200),               # ひずみ履歴 (control="stress" で応力制御)
+    include_fields=["ep"],                          # 状態量は指定したものだけを返す
+    progress=lambda done, total: progress.append((done, total)),
 )
+print(out.converged, out.n_steps, out.stress.shape, out.fields["ep"].shape)
+print(f"最終の応力 {out.stress[-1, 0]:.1f} MPa、進捗の通知 {len(progress)} 回 (最後は {progress[-1]})")
 
-print()
-print("=" * 60)
-print(f"  run_simulation: {name} (defaults)")
-print("=" * 60)
-print(f"  converged        : {out.converged}")
-print(f"  n_steps          : {out.n_steps}")
-print(f"  final sigma11    : {out.stress[-1, 0]:.1f} MPa")
-print(f"  final ep         : {out.fields['ep'][-1]:.4e}")
-print(f"  progress calls   : {len(progress_log)} (last: {progress_log[-1]})")
+# %% 3. 非収束と入力の誤り
+unsolvable = dict(E=206e3, nu=0.3, sigma_y0=250.0, C_k=1e9, gamma=1e12)
+partial = run_simulation(registry.get("ow_kinematic"), unsolvable, np.linspace(0.0, 0.05, 10))
+print(partial.converged, partial.failed_step, partial.n_steps, partial.stress.shape)
 
-# ---------------------------------------------------------------------------
-# 3. Non-convergence is a value, not an exception
-#    A user exploring parameters will submit unsolvable values; the service
-#    returns the partial history so the UI can plot it with a marker.
-# ---------------------------------------------------------------------------
-bad_params = dict(E=206e3, nu=0.3, sigma_y0=250.0, C_k=1e9, gamma=1e12)
-out_bad = run_simulation(reg.get("ow_kinematic"), bad_params, np.linspace(0.0, 0.05, 10))
-
-print()
-print("=" * 60)
-print("  Unsolvable parameters (OW, absurd recovery)")
-print("=" * 60)
-print(f"  converged        : {out_bad.converged}")
-print(f"  failed_step      : {out_bad.failed_step}")
-print(f"  partial history  : {out_bad.n_steps} steps, stress shape {out_bad.stress.shape}")
-
-# Caller bugs DO raise (ValueError → HTTP 400 in the API layer):
 try:
-    run_simulation(reg.get(name), {"E": 206e3}, np.linspace(0, 1e-3, 5))
-except ValueError as e:
-    print(f"\n  Caller bug raises: {e}")
+    run_simulation(registry.get("j2_isotropic"), {"E": 206e3}, np.linspace(0.0, 1e-3, 5))
+except ValueError as error:
+    print(type(error).__name__, "—", error)
+
+# %% 4. テンプレートの登録
+from returnmap.core import PLANE_STRESS
+from returnmap.models import J2Isotropic
+from returnmap.service import ModelRegistry
+
+values = {"E": 206e3, "nu": 0.3, "sigma_y0": 250.0, "H": 1000.0}
+own = ModelRegistry()
+own.register("j2_3d", J2Isotropic(**values))                             # 次元の既定は 3D
+own.register("j2_ps", J2Isotropic(dimension=PLANE_STRESS, **values))     # 同じクラスを別の次元で
+print(own.names(), own.describe("j2_3d").ntens, own.describe("j2_ps").ntens)

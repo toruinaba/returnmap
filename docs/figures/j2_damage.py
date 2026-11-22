@@ -8,8 +8,14 @@ Demonstrates:
 
 Usage
 -----
-    uv run --extra examples python examples/example_j2_damage.py
+    uv run --extra examples python docs/figures/j2_damage.py      # or: make docs-figures
+
+Writes docs/guide/models/img/j2_damage.png, the figure the model's page shows
+(or into the directory given as the first argument).
 """
+
+import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -142,7 +148,9 @@ if HAS_MATPLOTLIB:
                  f"(S={damaged.S}, s={damaged.s}, p_D={damaged.p_D})",
                  x=0.01, ha="left", color=INK, fontsize=11)
     fig.tight_layout()
-    out = "examples/output_j2_damage.png"
+    # The figure of the documentation, or the directory given on the command line.
+    out_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parents[1] / "guide" / "models" / "img"
+    out = out_dir / "j2_damage.png"
     fig.savefig(out, dpi=150)
     print(f"  Plot saved → {out}")
 else:

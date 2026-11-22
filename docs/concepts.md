@@ -1,90 +1,103 @@
-# 概念
+# 構成と規約
 
-## 三層構造
+returnmap の構成 (層、パッケージ、integrator の種類) と、全体に共通する規約 (Voigt 規約、流れ方向の表現、許容値) を示す。非収束の扱いは [非収束の扱い](guide/nonconvergence.md) にある。
 
-```
-MaterialModel  ──defines──▶  yield_function / update_state / state_residual / flow
+## 1. 三層構造
+
+```text
+MaterialModel  ──定義──▶  yield_function / update_state / state_residual / flow
       │
       ▼
-  Integrator   ──wraps──▶  stress_update(strain_inc, stress_n, state_n) → StressUpdateResult
-      │                    increment(strain_inc, stress_n, state_n)     → Increment
+  integrator   ──1 ステップ──▶  stress_update(strain_inc, stress_n, state_n) → StressUpdateResult
+      │
       ▼
-    Driver     ──steps──▶  run(load) → DriverResult
-                            iter_run(load) → Iterator[DriverStep]
+    driver     ──履歴──▶  run(load) → DriverResult
+                          iter_run(load) → DriverStep の列
 ```
 
-**import 元は 7 つのパッケージ** — どの名前も 1 つのパッケージから取る:
+| 層 | 役割 | 主な名前 |
+|---|---|---|
+| モデル | 構成則。降伏関数、状態の発展則、パラメータを持つ | `MaterialModel` |
+| integrator | 1 ステップの応力更新 (弾性予測 → 判定 → リターンマッピング → 整合接線)。Abaqus による UMAT の呼び出し 1 回に相当する | `PythonIntegrator`、`FortranIntegrator` |
+| driver | integrator を載荷履歴に沿って呼ぶ | `StrainDriver`、`StressDriver`、`MixedDriver` |
 
-| パッケージ | 中身 |
+フィッティング (`fit_params`)、比較 (`compare_models`)、検査 (`returnmap.verification`)、サービス (`returnmap.service`) は、この 3 層の上に作られている。
+
+演算は倍精度 (float64) で行う。自動微分は autograd による。
+
+## 2. パッケージ
+
+公開の import 元は、次の 7 つのパッケージである。各名前は、1 つのパッケージのみから import する。
+
+| パッケージ | 内容 |
 |---|---|
-| `returnmap.core` | モデルを書く: `MaterialModel`、状態変数の宣言 (`Implicit` / `Explicit` / `NTENS` / `SCALAR`)、次元 (`SOLID_3D` 等)、`hand_block`、`verified_against_fortran`、結果型 |
-| `returnmap.models` | 参照モデル (J2 / 損傷 / AF / OW / YU) |
-| `returnmap.simulation` | integrator、driver、載荷履歴 (`FieldHistory`)、`FortranModule` |
-| `returnmap.fitting` | `fit_params`、`FitTarget`、`ParameterSpace` |
-| `returnmap.verification` | 検査: `check_hand_blocks`、`check_solution`、`check_tangent`、`crosscheck`、`compare_jacobians`、`check_bindings` |
-| `returnmap.service` | WebAPI 向けの契約層 |
-| `returnmap.utils` | モデル用の補助関数 (smooth 近似、主値分解) |
+| `returnmap.core` | モデルの定義に用いるもの: `MaterialModel`、`ParamMeta`、状態変数の宣言 (`Implicit`、`Explicit`、`NTENS`、`SCALAR`)、次元 (`SOLID_3D`、`PLANE_STRAIN`、`PLANE_STRESS`、`UNIAXIAL_1D`)、`hand_block`、`hand_tangent`、`verified_against_fortran`、結果の型 |
+| `returnmap.models` | 組み込みモデル (J2、J2 + 損傷、Armstrong-Frederick、Chaboche、Ohno-Wang、Yoshida-Uemori) |
+| `returnmap.simulation` | integrator、driver、載荷履歴 (`FieldHistory`)、`compare_models`、`FortranModule` |
+| `returnmap.fitting` | `fit_params`、`ParameterSpace`、`FitTarget`、`Observation` |
+| `returnmap.verification` | 検査: `check_model`、`check_hand_blocks`、`check_solution`、`check_tangent`、`crosscheck`、`compare_jacobians`、`check_bindings`、UMAT の宣言 (`Umat`) |
+| `returnmap.service` | Web API 向けの契約層: `ModelRegistry`、`run_simulation` |
+| `returnmap.utils` | モデル用の補助関数 (滑らかな近似、主値分解) |
 
-その下のサブモジュール (`returnmap.core.state`、`returnmap.simulation.driver` など) はコードの置き場所で、文書化されたインターフェースではない。
+サブモジュール (`returnmap.core.state`、`returnmap.simulation.driver` など) は実装の置き場所であり、文書化されたインターフェースではない。
 
-## Integrator の種類
+## 3. integrator の種類
 
-| クラス | 内部ソルバ | 用途 |
-|--------|----------|------|
-| `PythonIntegrator(model)` | auto (user_defined があれば使用、なければ NR) | 通常用途 |
-| `PythonNumericalIntegrator(model)` | numerical_newton 固定 | NR 強制 (検証時) |
-| `PythonAnalyticalIntegrator(model)` | user_defined 固定 | 閉形式解と比較する場合 |
-| `FortranIntegrator.from_model(fortran, subroutine, model)` | Fortran f2py | UMAT クロス検証 |
-| `SubSteppingIntegrator(integrator)` | 上記をラップ | 大きい Δε で収束しない場合 |
+| クラス | 解法 | 用途 |
+|---|---|---|
+| `PythonIntegrator(model)` | モデルが手書きの解法 (`user_defined_return_mapping`) を持てばそれ、無ければ自動微分 | 通常の計算 |
+| `PythonNumericalIntegrator(model)` | 自動微分に固定 | 検査 (手書きの解法の基準) |
+| `PythonAnalyticalIntegrator(model)` | 手書きの解法に固定 | 検査 (自動微分との比較) |
+| `FortranIntegrator.from_model(fortran, subroutine, model)` | コンパイルした UMAT | Python のモデルとの比較 |
+| `SubSteppingIntegrator(integrator)` | 上記のいずれかを包み、収束しなかった増分を分割する | 大きい増分 ([非収束の扱い](guide/nonconvergence.md)) |
 
-**`nr_jacobian="broyden"`** (コンストラクタ kwarg、デフォルト `"exact"`) — NR ヤコビアンをステップ初回だけ autodiff で厳密計算し、以降は Broyden rank-1 更新で済ませる。残差が減らないと厳密再計算に自動フォールバック。実測で YU 級モデル 2〜4 倍高速 (反復 1〜2 回増)。**consistent tangent は常に厳密**なので精度への影響はない。閉形式フックを持たないモデル (AF/OW 等) の長い履歴・フィッティングで推奨。
+| 設定 (Python の integrator) | 既定 | 内容 |
+|---|---|---|
+| `nr_jacobian` | `"exact"` | `"broyden"` は、ステップの初回のみ厳密なヤコビアンを計算し、以降を Broyden 更新で代用する。残差が減少しない場合は、厳密なヤコビアンを再計算する。整合接線は常に厳密であり、精度には影響しない。手書きの解法を持たないモデルの長い履歴とフィッティングに向く (実測で 2〜4 倍速い。反復は 1〜2 回増える) |
+| `nr_restart` | `True` | 自動微分の解法が失敗したステップを、別の初期値から 1 回解き直す。`False` は解き直しを行わない ([非収束の扱い](guide/nonconvergence.md)) |
+| `raise_on_nonconverged` | `True` | `False` は、非収束を例外ではなく値で返す ([非収束の扱い](guide/nonconvergence.md)) |
+| `tol`、`max_iter` | `1e-10`、`50` | 応力更新の反復の許容値と上限 |
 
-**`nr_restart`** (コンストラクタ kwarg、デフォルト `True`) — 自動微分の NR は、まず試行点 (σ_trial、Δλ = 0) から解く。それが失敗したステップだけ、Δλ の初期値を塑性側の見積もりに変えて 1 回解き直す。`nr_restart=False` はこの解き直しをしない (0.3.1 までの解法)。2 つを同じ履歴で比べるためのスイッチで、最初の試行で解けるステップの結果はどちらでもビット単位で同じ。詳細は下の「非収束との付き合い方」。
+応力更新の未知数は、常に `[σ, Δλ, implicit の状態]` である。`Explicit` の状態は `update_state` で求められ、未知数に含まれない。
 
-## Voigt 規約と FlowVector
+## 4. Voigt 規約
 
-3D ソリッドの応力・ひずみは 6 成分 `[11, 22, 33, 12, 13, 23]` (ABAQUS UMAT 規約)。剪断成分の扱いが**量の種類で異なる 2 層契約**になっている:
+3D の応力とひずみは 6 成分であり、順序は `[11, 22, 33, 12, 13, 23]` (ABAQUS の UMAT の規約) である。せん断成分の扱いは、量の種類によって異なる。
 
-- **応力系** (σ, s, 背応力 α など): **physical shear** — テンソル成分そのもの
-- **ひずみ系** (ε, ε_p, Δε): **engineering shear** (γ12 = 2ε12) — ABAQUS `DSTRAN`・弾性剛性 `σ = C:ε`・driver 入力すべてこちら
+| 種類 | 量 | せん断成分 |
+|---|---|---|
+| 応力系 | σ、偏差応力 s、背応力 α など | テンソル成分そのもの |
+| ひずみ系 | ε、ε_p、Δε | 工学ひずみ (γ12 = 2ε12)。ABAQUS の `DSTRAN`、弾性剛性 `σ = C:ε`、driver の入力は、すべてこの扱いである |
 
-塑性流れ方向 n は同じ方向に 2 つの Voigt 表現 (剪断 ×2 差) があり、取り違えると**単軸/二軸では消える silent error** になる。そこで `flow(state)` は生の ndarray ではなく `FlowVector` を返し、使用側が規約を名指しする:
+ノルムや相当量の計算では、Mandel のスケーリング (せん断 ×√2) が内部で適用される。次元ごとの演算子 (`dev`、`vonmises`、`inner_product`、`strain_norm` など) は `StressDimension` が持ち、`MaterialModel` の同名のメソッドから用いる。
 
-```python
-n = model.flow(state)
-C @ n.strain_like          # engineering shear — Δε_p = Δλ·n、C@n、残差のひずみ次元
-n.stress_like              # physical shear — 背応力など応力系内部変数の発展則
-n * 2.0                    # TypeError — 規約を名指ししない演算は拒否される
-```
+| 次元 | 成分数 | 成分 |
+|---|---|---|
+| `SOLID_3D` | 6 | 11、22、33、12、13、23 |
+| `PLANE_STRAIN` | 4 | 11、22、33、12 |
+| `PLANE_STRESS` | 3 | 11、22、12 |
+| `UNIAXIAL_1D` | 1 | 11 |
 
-オーバーライドの方法は [モデルのフック](guide/writing-models.md) の 5 節、詳細は API リファレンスの [`FlowVector`](reference/core.md) を参照。
+## 5. 流れ方向の表現
 
-## 非収束との付き合い方
+塑性流れの方向 n は、同じ方向に対して、せん断成分が 2 倍異なる 2 つの Voigt 表現を持つ。両者の取り違えは、単軸と二軸の計算では結果に現れない。そのため、`model.flow(state)` は配列ではなく `FlowVector` を返し、用いる側が表現を指定する。
 
-材料点の return mapping は収束しないことがあり、フレームワークは層ごとに異なる扱いを用意している。
+| 式 | 表現 | 用途 |
+|---|---|---|
+| `model.flow(state).strain_like` | 工学ひずみのせん断 | Δε_p = Δλ·n、`C @ n`、残差のひずみの次元の項 |
+| `model.flow(state).stress_like` | テンソル成分 | 背応力など、応力系の内部変数の発展則 |
+| `model.flow(state) * 2.0` など | — | `TypeError`。表現を指定しない演算は拒否される |
 
-**収束判定はスケール不変** — NR の許容値は `tol × max(1, ‖σ_trial‖_∞)` (driver 外側 NR は `tol + rtol·‖σ_target‖_∞`)。MPa でも Pa でも同じ挙動になる。
+`flow` を定義する方法は [モデルのフック](guide/writing-models.md) の 5 節、型の詳細は API リファレンスの [`FlowVector`](reference/core.md) を参照。
 
-**`tol` は「その対象の許容値」** — integrator と driver では自分の NR の収束、検査 (`check_hand_blocks` / `check_solution` / `check_tangent` / `compare_jacobians` / `check_bindings`) では合否 (誤差の測り方は全検査で同じ — [検査の一覧](guide/verification.md))、`fit_params` では最適化器の収束を指す。2 つを同じ引数リストに並べない: `crosscheck` の `stress_tol` / `state_tol` / `tangent_tol` は合否で、driver の外側 NR の設定は `driver_factory` が作る driver が持つ。
+## 6. 許容値
 
-**Δλ < 0 は非収束扱い** — 残差系は Δλ < 0 側にも根を持つが、負の塑性乗数は KKT 条件違反 (塑性ひずみの巻き戻り)。残差ノルムはこの根を区別できないため、フレームワークが符号で弾く。大きい Δε で σ_trial が許容枝の外に出ると起きる。手書きのリターンマッピング (`user_defined_return_mapping`) の結果も同じ条件で確かめる — 閉形式解はどんな入力にも何かの値を返すので、Δλ < 0 や非有限の値 (`inf` / `nan`) は `converged=True` と報告されていても非収束として扱う。
+`tol` は、その対象の許容値を表す。
 
-**失敗したステップは 1 回解き直す** — 自動微分の NR が試行点 (Δλ = 0) からの反復で失敗したとき — Δλ < 0 の根に着いた、反復の上限に達した、ヤコビアンが特異だった — 同じステップを、Δλ の初期値を変えてもう 1 回解く。初期値は、試行点で σ と Δλ だけの Newton 1 歩を取ったときの Δλ (implicit な状態量を試行値に固定した見積もりで、硬化を状態量が担うモデルでは完全塑性の値になる)。残差のヤコビアンから作るので、モデルごとのコードは要らず、Δλ の単位にも依らない。
-
-- **方程式は変わらない。** 解き直しで着くのは同じステップの同じ残差の根で、増分を分割したときのような別の積分にはならない。
-- **解けているステップには触れない。** 最初の試行で解けたステップは、結果も反復の履歴も解き直しの無い解法とビット単位で同じ。
-- **記録に残る。** `StressUpdateResult.n_restarts` が 1 になり、`n_iterations` と `residual_history` は 2 回分を持つ。`compare_models` の表には、解き直しがあったときだけ `restarts` の列が出る。
-- **2 回目も失敗したら非収束。** 扱いは今までと同じで、`raise_on_nonconverged` に従う。2 回目が例外を出したときは、1 回目の結果をそのまま報告する (報告されていた失敗を、例外に変えない)。
-- **手書きのリターンマッピングは解き直さない。** `user_defined_return_mapping` はモデル自身の解法で、UMAT が移植するのもこちらである。フレームワークはその結果を確かめるだけで、反復には手を出さない。
-- **切るには `nr_restart=False`。** 解き直しの有無を同じ履歴で比べられる ([モデルを比べる](guide/comparing.md))。
-
-必ず解ける保証は無い。解き直しても解けないステップには、増分の分割が残る。
-
-**増分の自動分割** — `SubSteppingIntegrator(integrator, max_substeps=16)` は非収束を検知して同じ増分を 2 → 4 → 8 分割で再試行する。opt-in のラッパで、収束する増分では結果・反復数・接線が一切変わらない。詳細は `simulation/integrator/substepping.py` の docstring。
-
-**非収束を値として受け取る** — 既定では `RuntimeError`。スイッチは integrator の `raise_on_nonconverged` 1 つだけで、driver は自分の外側 NR (`StressDriver` / `MixedDriver`) の失敗にも同じ設定を使う。`PythonIntegrator(model, raise_on_nonconverged=False)` にすると:
-
-- `iter_run` は `DriverStep.converged=False` の step を yield して停止する。
-- `run` は完了した step だけを返し、`result.converged=False` / `result.failed_step` で知らせる。失敗した step は非収束イテレートなので `result.stress` などの配列には入らない。
-
-**フィッティング中の非収束はペナルティ** — 探索空間には解の存在しないパラメータ値が普通に含まれるため、`fit_params` は非収束の評価を例外にせず有限の大ペナルティとして扱い、最適化を続行する ([パラメータフィッティング](guide/fitting.md))。
+| 対象 | `tol` の意味 |
+|---|---|
+| integrator | 応力更新の反復の収束。判定は `tol × max(1, ‖σ_trial‖_∞)` に対して行い、単位 (MPa、Pa) に依存しない |
+| driver (`StressDriver`、`MixedDriver`) | 外側の反復の収束。判定は `tol + rtol·‖σ_target‖_∞` に対して行う |
+| 検査 (`check_hand_blocks`、`check_solution`、`check_tangent`、`compare_jacobians`、`check_bindings`) | 合否。誤差の定義は全検査で共通である ([検査の一覧](guide/verification.md)) |
+| `crosscheck` | 合否。`stress_tol`、`state_tol`、`tangent_tol` で指定する。driver の外側の反復の設定は、`driver_factory` が作る driver が持つ |
+| `fit_params` | 最適化の収束 |

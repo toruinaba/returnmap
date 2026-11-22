@@ -1,61 +1,116 @@
 # サービスに組み込む
 
-WebAPI やジョブワーカーへの組み込み用に、`returnmap.service` が **Web 依存ゼロの契約層**を提供する。入出力は plain な dict / ndarray / dataclass のみで、pydantic / HTTP 変換はデプロイ側の仕事。
+Web API やジョブワーカーから returnmap を呼び出す手順を示す。`returnmap.service` は、Web のライブラリに依存しない契約層である。入出力は dict、配列、dataclass のみであり、HTTP やスキーマへの変換は組み込む側が行う。
 
-```python
-import numpy as np
-from returnmap.service import ModelRegistry, default_registry, run_simulation
+コードは [`examples/example_service.py`](https://github.com/toruinaba/returnmap/blob/main/examples/example_service.py) の各節であり、上から順に実行できる。
 
-# レジストリ: 名前 → テンプレートのモデルの明示対応 (シングルトン無し —
-# デプロイごとに作り、公開するモデルだけを登録して監査可能にする)
-reg = default_registry()               # 参照 1D モデル入り
-reg.names()                            # ['af_kinematic', 'j2_isotropic', 'ow_kinematic']
+## 1. レジストリ
 
-# describe() = GET /models 相当。param_meta (単位・説明・デフォルト・範囲)
-# から WebUI の入力フォームを自動生成できる
-d = reg.describe("j2_isotropic")
-d.param_meta["E"]                      # ParamMeta(doc="Young's modulus", unit="MPa", default=210000.0, ...)
+`ModelRegistry` は、公開する名前とモデルの対応を持つ。全体で共有するインスタンスは無い。組み込む側が作り、公開するモデルだけを登録する。`default_registry()` は、組み込みの 1D モデルを登録したレジストリを返す。
 
-# 実行: 生のリストを受け取り plain な配列を返す
-out = run_simulation(
-    reg.get("j2_isotropic"),
-    params={"E": 206e3, "nu": 0.3, "sigma_y0": 250.0, "H": 1000.0},
-    load=np.linspace(0, 5e-3, 1000),   # ひずみ履歴 (control="stress" で応力制御)
-    include_fields=["ep"],             # 状態量は選択制 (デフォルト応力のみ)
-    nr_jacobian="broyden",             # 既定は全層 "exact"。速度を優先するなら明示する
-    progress=lambda done, total: ...,  # ジョブ進捗の報告に
-)
-out.stress, out.strain, out.fields["ep"]
+```{literalinclude} ../../examples/example_service.py
+:language: python
+:start-after: "# %% 1. レジストリ"
+:end-before: "# %%"
 ```
 
-**非収束は値で返る** — パラメータ探索中のユーザーは解の無い値を普通に入力するため、`run_simulation` は途中で解けなくなっても raise せず、そこまでの部分履歴 + `converged=False` / `failed_step` を返す (API 層は 200 で返し、UI が「ステップ k で非収束」と部分曲線を描ける)。一方、パラメータ名の過不足や未知の `include_fields` は**呼び出し側のバグ**なので `ValueError` (API 層で 400)。
-
-## 登録するのはテンプレートのモデル
-
-レジストリに登録するのはクラスではなく、**モデルのインスタンス(テンプレート)**である。`run_simulation` は、リクエストのパラメータを `model.with_params(**params)` でテンプレートに入れて走らせる(`fit_params` と同じ作り方。テンプレート自体は書き換えない)。クラスだけでは決まらないものを、テンプレートが決める:
-
-- **次元** — 次元を固定していないクラス(`J2Isotropic` など)を、どの次元で公開するか。
-- **パラメータ以外の設定** — `param_names` に無い設定(`J2IsotropicDamageUnilateral` の `c` など)。
-
-```python
-from returnmap.core import PLANE_STRESS
-from returnmap.models import J2Isotropic
-
-values = {"E": 206e3, "nu": 0.3, "sigma_y0": 250.0, "H": 1000.0}
-reg = ModelRegistry()
-reg.register("j2_3d", J2Isotropic(**values))                          # 次元の既定は SOLID_3D
-reg.register("j2_ps", J2Isotropic(dimension=PLANE_STRESS, **values))  # 同じクラスを別の次元で
-reg.describe("j2_ps").ntens            # 3 — load の 1 行の幅
+```text
+['af_kinematic', 'j2_isotropic', 'ow_kinematic']
+J2Isotropic1D 1 ('E', 'nu', 'sigma_y0', 'H')
+E         MPa   210000.0  (1000.0, 1000000.0)  Young's modulus
+nu                   0.3  (0.0, 0.49)  Poisson's ratio
+sigma_y0  MPa      250.0  (1.0, 5000.0)  Initial yield stress
+H         MPa     1000.0  (0.0, 100000.0)  Isotropic hardening modulus (linear)
 ```
 
-**テンプレートが持つパラメータの値は使われない。** `run_simulation` の `params` は `param_names` の全部を過不足なく持つ必要があり、テンプレートの値が代わりに使われることは無い(リクエストが名指ししていない値で計算が走らないようにするため)。テンプレートの値は、モデルを構築するための仮の値である。`default_registry()` は各クラスの `param_meta` の `default` を入れている。
+| 名前 | 内容 |
+|---|---|
+| `registry.names()` | 登録されている名前 |
+| `registry.get(名前)` | 登録されているモデル (テンプレート) |
+| `registry.describe(名前)` | モデルの記述 (`ModelDescriptor`)。`class_name`、`param_names`、`param_meta`、`ntens`、`doc` を持つ。`GET /models` に相当する情報であり、`param_meta` (説明、単位、目安の値、範囲) から入力フォームを生成できる |
 
-**非公開モデルの登録規約** — 非公開モデルパッケージは `MODELS: dict[str, MaterialModel]`(名前 → テンプレート)を公開し、デプロイ側がそれを import して自分のレジストリに登録する:
+`param_meta` は、モデルのクラスに宣言する ([モデルのフック](writing-models.md) の 2 節)。リポジトリの間で情報が食い違わないようにするためである。
 
-```python
-from returnmap_internal import MODELS      # 非公開パッケージ側
-for name, model in MODELS.items():
-    reg.register(name, model)
+## 2. 計算の実行
+
+`run_simulation` は、モデル、パラメータ、載荷履歴を受け取り、配列を返す。
+
+```{literalinclude} ../../examples/example_service.py
+:language: python
+:start-after: "# %% 2. 計算の実行"
+:end-before: "# %%"
 ```
 
-モデルの `param_meta` はモデルクラス自身に宣言する (`ParamMeta`) — メタ情報がリポジトリ間で乖離しないため。実行例: `examples/example_service.py`
+```text
+True 200 (200, 1) (200,)
+最終の応力 253.8 MPa、進捗の通知 200 回 (最後は (200, 200))
+```
+
+| 引数 | 内容 |
+|---|---|
+| 第 1 引数 (モデル) | テンプレート (4 節) |
+| `params` | パラメータ。`param_names` のすべてを、過不足なく与える |
+| `load` | 載荷履歴の配列 (累積値) |
+| `control` | `"strain"` (既定) または `"stress"` |
+| `include_fields` | 返す状態量の名前。既定では応力とひずみのみを返す |
+| `nr_jacobian` | 既定は `"exact"`。速度を優先する場合は `"broyden"` |
+| `progress` | ステップごとに呼ばれる関数。引数は (完了したステップ数, 全ステップ数) |
+
+| 結果 (`SimulationOutput`) | 内容 |
+|---|---|
+| `stress`、`strain` | 応力、ひずみ。形は `(ステップ数, 成分数)` |
+| `fields[名前]` | `include_fields` で指定した状態量 |
+| `converged`、`failed_step`、`n_steps` | 収束、収束しなかったステップの番号、完了したステップ数 |
+
+## 3. 非収束と入力の誤り
+
+パラメータを探索する利用者は、解の無い値も入力する。`run_simulation` は、途中で収束しなくなっても例外を送出せず、そこまでの履歴を返す。
+
+```{literalinclude} ../../examples/example_service.py
+:language: python
+:start-after: "# %% 3. 非収束と入力の誤り"
+:end-before: "# %%"
+```
+
+```text
+False 1 1 (1, 1)
+ValueError — J2Isotropic1D: parameter mismatch — missing ['H', 'nu', 'sigma_y0']
+```
+
+| 状況 | 動作 | API 層での扱いの例 |
+|---|---|---|
+| 計算が途中で収束しない | 値で返る。`converged=False`、`failed_step`、完了したステップまでの配列 | 200 で返し、途中までの曲線と非収束の位置を表示する |
+| パラメータ名の過不足、未知の `include_fields` | `ValueError`。呼び出し側の誤りである | 400 で返す |
+
+## 4. テンプレートの登録
+
+レジストリに登録するものは、クラスではなく、モデルのインスタンス (テンプレート) である。`run_simulation` は、リクエストのパラメータを `model.with_params(**params)` でテンプレートに入れて計算する (`fit_params` と同じ方法)。テンプレート自体は変更されない。
+
+クラスだけでは決まらない次の 2 つを、テンプレートが決める。
+
+| 項目 | 内容 |
+|---|---|
+| 次元 | 次元を固定していないクラス (`J2Isotropic` など) を、どの次元で公開するか |
+| パラメータ以外の設定 | `param_names` に無い設定 (`J2IsotropicDamageUnilateral` の `c` など) |
+
+```{literalinclude} ../../examples/example_service.py
+:language: python
+:start-after: "# %% 4. テンプレートの登録"
+```
+
+```text
+['j2_3d', 'j2_ps'] 6 3
+```
+
+- **テンプレートが持つパラメータの値は、計算に用いられない。** `run_simulation` の `params` は全パラメータを与える必要があり、テンプレートの値で補われることは無い。リクエストが指定していない値で計算が行われないようにするためである。テンプレートの値は、モデルを構築するための仮の値である。
+- `default_registry()` のテンプレートは、各クラスの `param_meta` の目安の値で作られている。
+- `ntens` は、`load` の 1 行の幅である。
+
+### 非公開のモデルの登録
+
+非公開のモデルのパッケージは、名前 → テンプレートの dict (`MODELS: dict[str, MaterialModel]`) を公開する。組み込む側は、それを import し、`registry.register(名前, モデル)` で自身のレジストリに登録する。
+
+## 関連ページ
+
+- 計算の基本: [応答を計算する](simulation.md)
+- 非収束の仕組み: [非収束の扱い](nonconvergence.md)

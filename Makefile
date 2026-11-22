@@ -1,7 +1,7 @@
 # returnmap Makefile
 # Provides shortcuts for Fortran compilation and test execution.
 
-.PHONY: fortran-build fortran-build-umat fortran-build-yu fortran-build-all fortran-build-yu-3d-bench docker-bench-yu-3d test test-unit test-integration test-e2e test-e2e-slow test-slow test-models test-models-fortran test-all docker-build docker-test docker-test-yu docs docs-clean clean
+.PHONY: fortran-build fortran-build-umat fortran-build-yu fortran-build-all fortran-build-yu-3d-bench docker-bench-yu-3d test test-unit test-integration test-e2e test-e2e-slow test-slow test-models test-models-fortran test-all docker-build docker-test docker-test-yu docs docs-figures docs-clean clean
 # Archived targets (fixed-form .for files moved to archives/fortran_fixed_form/):
 #   fortran-build-yu-fixed  -- uv run returnmap build --abaqus-stubs archives/fortran_fixed_form/yu_kinematic_3d_fixed.for --name yu_kinematic_3d_fixed --link lapack --link blas
 
@@ -132,6 +132,11 @@ docker-bench-yu-3d:
 ## Warnings are errors: a dead cross-reference or an undocumented public name fails the build.
 docs:
 	uv run sphinx-build -b html -W --keep-going -n docs docs/_build/html
+
+## Redraw the figures of the documentation (docs/guide/models/img/*.png) from the
+## scripts in docs/figures (needs: uv sync --extra examples).  About a minute.
+docs-figures:
+	for script in docs/figures/*.py; do MPLBACKEND=Agg uv run python $$script || exit 1; done
 
 ## Remove the built documentation
 docs-clean:
