@@ -57,7 +57,7 @@ n.stress_like              # physical shear — 背応力など応力系内部�
 n * 2.0                    # TypeError — 規約を名指ししない演算は拒否される
 ```
 
-オーバーライドの方法は [モデルを作る](guide/writing-models.md) の「flow のオーバーライド」、詳細は API リファレンスの [`FlowVector`](reference/core.md) を参照。
+オーバーライドの方法は [モデルのフック](guide/writing-models.md) の 5 節、詳細は API リファレンスの [`FlowVector`](reference/core.md) を参照。
 
 ## 非収束との付き合い方
 
@@ -65,7 +65,7 @@ n * 2.0                    # TypeError — 規約を名指ししない演算は�
 
 **収束判定はスケール不変** — NR の許容値は `tol × max(1, ‖σ_trial‖_∞)` (driver 外側 NR は `tol + rtol·‖σ_target‖_∞`)。MPa でも Pa でも同じ挙動になる。
 
-**`tol` は「その対象の許容値」** — integrator と driver では自分の NR の収束、検査 (`check_hand_blocks` / `check_solution` / `check_tangent` / `compare_jacobians` / `check_bindings`) では合否 (誤差の測り方は全検査で同じ — [検証ワークフロー](guide/verification.md))、`fit_params` では最適化器の収束を指す。2 つを同じ引数リストに並べない: `crosscheck` の `stress_tol` / `state_tol` / `tangent_tol` は合否で、driver の外側 NR の設定は `driver_factory` が作る driver が持つ。
+**`tol` は「その対象の許容値」** — integrator と driver では自分の NR の収束、検査 (`check_hand_blocks` / `check_solution` / `check_tangent` / `compare_jacobians` / `check_bindings`) では合否 (誤差の測り方は全検査で同じ — [検査の一覧](guide/verification.md))、`fit_params` では最適化器の収束を指す。2 つを同じ引数リストに並べない: `crosscheck` の `stress_tol` / `state_tol` / `tangent_tol` は合否で、driver の外側 NR の設定は `driver_factory` が作る driver が持つ。
 
 **Δλ < 0 は非収束扱い** — 残差系は Δλ < 0 側にも根を持つが、負の塑性乗数は KKT 条件違反 (塑性ひずみの巻き戻り)。残差ノルムはこの根を区別できないため、フレームワークが符号で弾く。大きい Δε で σ_trial が許容枝の外に出ると起きる。手書きのリターンマッピング (`user_defined_return_mapping`) の結果も同じ条件で確かめる — 閉形式解はどんな入力にも何かの値を返すので、Δλ < 0 や非有限の値 (`inf` / `nan`) は `converged=True` と報告されていても非収束として扱う。
 

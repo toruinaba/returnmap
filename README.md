@@ -81,8 +81,8 @@ result.history("ep")                          # 状態量の履歴
 | [モデルを書く](https://toruinaba.github.io/returnmap/guide/model-python.html) | 段階 A: モデルの定義、検証の宣言、検査の報告 |
 | [手書きの解法を照合する](https://toruinaba.github.io/returnmap/guide/model-hand-written.html) | 段階 B: 手書きのリターンマッピングと接線を、自動微分を基準に検査する |
 | [UMAT を確かめる](https://toruinaba.github.io/returnmap/guide/model-umat.html) | 段階 C: UMAT の宣言、ビルド、Python のモデルとの比較、不一致の調査 |
-| [モデルを作る](https://toruinaba.github.io/returnmap/guide/writing-models.html) | Explicit / Implicit、`flow`、滑らかな切り替え、弾性ステップのフック、閉形式ソルバ |
-| [検証ワークフロー](https://toruinaba.github.io/returnmap/guide/verification.html) | `check_model`、手導出ブロックの照合、接線の差分検査、2 つの実装の比較 |
+| [モデルのフック](https://toruinaba.github.io/returnmap/guide/writing-models.html) | フックの仕様: Explicit / Implicit、`flow`、滑らかな近似、弾塑性の判定、弾性予測子、手書きの解法 |
+| [検査の一覧](https://toruinaba.github.io/returnmap/guide/verification.html) | 検査の仕様と誤差の測り方: `check_model`、手導出ブロックの照合、接線の差分検査、手書きの解の検査、2 つの実装の比較 |
 
 **仕組みと、そのほか**
 

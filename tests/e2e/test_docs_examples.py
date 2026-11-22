@@ -1,10 +1,12 @@
 """A guide page built from example code shows what that code does.
 
-A scenario page of the guide takes its code from ``examples/`` with
-``literalinclude`` — the ``# %%`` cells of a script, or a class of the example
-model family — and shows what a script prints.  The scripts are run here, so
-that a change to the API that breaks the page's code fails a test, and the
-output printed on the page is compared with what the scripts print now:
+A page of the guide takes its code from files that are run, with
+``literalinclude`` — the ``# %%`` cells of a script in ``examples/``, a class
+of the example model family, or, on the pages that specify the hooks and the
+checks, a method of a model the package ships — and shows what a script
+prints.  The scripts are run here, so that a change to the API that breaks
+the page's code fails a test, and the output printed on the page is compared
+with what the scripts print now:
 
 * a ``text`` block is output that is the same on every run — each of its
   lines is a line the scripts print, character for character;
@@ -14,7 +16,8 @@ output printed on the page is compared with what the scripts print now:
   the wording are still checked.
 
 The page holds no Python block of its own: every line of code on it comes from
-a file under ``examples/``, so there is none that is shown without being run.
+``examples/``, from ``src/returnmap/`` or from a test, so there is none that
+is shown without being run.
 """
 
 import os
@@ -38,7 +41,12 @@ PAGES = {
     "docs/guide/model-hand-written.md": ["examples/model_family/report.py"],
     "docs/guide/model-umat.md": ["examples/model_family/report.py",
                                  "examples/model_family/umat_crosscheck.py"],
+    "docs/guide/verification.md": ["examples/example_checks.py"],
+    # The hooks page shows the source of shipped models, and no output.
+    "docs/guide/writing-models.md": [],
 }
+# Where the code of a page may come from.
+CODE_ROOTS = [REPO / "examples", REPO / "src" / "returnmap", REPO / "tests"]
 # Pages whose scripts take more than a few seconds (the fits of the tutorial).
 SLOW = {"docs/guide/tutorial.md"}
 # Pages that show the output of a compiled UMAT: the example family is built first.
@@ -145,22 +153,25 @@ def test_run_dependent_output_on_the_page_has_the_shape_the_scripts_print(page_a
 
 
 @pytest.mark.parametrize("page", sorted(PAGES), ids=lambda page: Path(page).stem)
-def test_every_line_of_code_on_the_page_comes_from_examples(page):
+def test_every_line_of_code_on_the_page_comes_from_a_file_that_is_run(page):
     path = REPO / page
     text = path.read_text(encoding="utf-8")
     assert not _blocks(path, "python"), (
         f"{path.name} has a Python block of its own; take the code from a file under "
-        "examples/ with literalinclude, so that it is run")
-    assert _blocks(path, "text") or _blocks(path, "none"), f"{path.name} shows no output"
+        "examples/ (or the package) with literalinclude, so that it is run")
+    if PAGES[page]:
+        assert _blocks(path, "text") or _blocks(path, "none"), f"{path.name} shows no output"
 
     includes = _INCLUDE.findall(text)
     assert includes, f"{path.name} includes no code"
     for target, options in includes:
         source = (path.parent / target).resolve()
-        assert REPO / "examples" in source.parents, f"{path.name} includes {target}, outside examples/"
+        assert any(root in source.parents for root in CODE_ROOTS), (
+            f"{path.name} includes {target}, which is not code that is run")
         assert source.is_file(), f"{path.name} includes {target}, which does not exist"
         lines = source.read_text(encoding="utf-8")
-        for marker in re.findall(r'^:(?:start|end)-(?:after|at|before): "(.*)"$', options, flags=re.M):
+        markers = re.findall(r"""^:(?:start|end)-(?:after|at|before): (["'])(.*)\1$""", options, flags=re.M)
+        for _, marker in markers:
             assert marker in lines, f"{path.name} includes {target} from {marker!r}, which is not in it"
 
 

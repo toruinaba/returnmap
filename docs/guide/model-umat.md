@@ -180,5 +180,5 @@ make docker-test       # イメージの中で UMAT をビルドし、fortran �
 
 ## 関連ページ
 
-- 各検査の測定内容と許容値: [検証ワークフロー](verification.md)
+- 各検査の測定内容と許容値: [検査の一覧](verification.md)
 - ビルド先のディレクトリの詳細: リポジトリの `fortran/README.md`

@@ -83,10 +83,10 @@ tangent check: agrees with central differences
 | 意図して項を省いたブロック | `approx=` (全ステップ)、`approx_when=` (条件に該当するステップのみ)。テストの許容値は変更しない |
 | 近似を含む接線 | `@hand_tangent` |
 
-書き方と検査の内容は [検証ワークフロー](verification.md) を参照。
+書き方と検査の内容は [検査の一覧](verification.md) の 3 節を参照。
 
 ## 関連ページ
 
 - 次の段階: [UMAT を確かめる](model-umat.md)
-- 各検査の測定内容と許容値: [検証ワークフロー](verification.md)
-- `user_defined_return_mapping` などのフックの契約: [モデルを作る](writing-models.md)
+- 各検査の測定内容と許容値: [検査の一覧](verification.md)
+- `user_defined_return_mapping` などのフックの契約: [モデルのフック](writing-models.md)
