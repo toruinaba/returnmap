@@ -7,7 +7,7 @@
 
 実行時間は約 50 秒 (Armstrong-Frederick モデルは自動微分で解くため、フィッティングの
 評価 1 回が 0.3〜1 秒かかる)。作図には matplotlib が要る
-(``pip install "returnmap[examples]"``)。無い場合は作図を省く。
+(returnmap を ``returnmap[examples]`` として入れると一緒に入る)。無い場合は作図を省く。
 
 記録 ``data/cyclic_tension_compression.csv`` は合成したもので (``data/generate.py``)、
 Armstrong-Frederick モデルの応答に測定ノイズを加えてある。

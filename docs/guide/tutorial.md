@@ -8,7 +8,7 @@
 | ノートブック | [`examples/notebook_tuning.py`](https://github.com/toruinaba/returnmap/blob/main/examples/notebook_tuning.py) | 3 節の調整をスライダーで行う |
 | 試験データ | [`examples/data/cyclic_tension_compression.csv`](https://github.com/toruinaba/returnmap/blob/main/examples/data/cyclic_tension_compression.csv) | 合成した記録。Armstrong-Frederick モデルの応答に、標準偏差 3 MPa のノイズを加えた 300 点 |
 
-作図には matplotlib を用いる (`pip install "returnmap[examples]"`)。
+作図には matplotlib を用いる。returnmap を `returnmap[examples]` として入れると一緒に入る (インストールの方法は [トップページ](../index.md))。
 
 ## 1. 試験データの読み込み
 

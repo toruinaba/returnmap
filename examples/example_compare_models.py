@@ -5,8 +5,8 @@
 
     uv run python examples/example_compare_models.py
 
-実行時間は約 15 秒。作図には matplotlib が要る (``pip install "returnmap[examples]"``)。
-無い場合は作図を省く。
+実行時間は約 15 秒。作図には matplotlib が要る (returnmap を ``returnmap[examples]`` として
+入れると一緒に入る)。無い場合は作図を省く。
 """
 
 try:

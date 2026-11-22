@@ -5,7 +5,8 @@
 
     uv run python examples/example_response.py
 
-作図には matplotlib が要る (``pip install "returnmap[examples]"``)。無い場合は作図を省く。
+作図には matplotlib が要る (returnmap を ``returnmap[examples]`` として入れると一緒に入る)。
+無い場合は作図を省く。
 """
 
 try:

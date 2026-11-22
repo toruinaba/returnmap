@@ -164,7 +164,7 @@ True 3 5.37e-04
 
 ### 作図
 
-応力-ひずみ曲線は、`result.strain` と `result.stress` をそのまま描く。matplotlib は `pip install "returnmap[examples]"` で入る。
+応力-ひずみ曲線は、`result.strain` と `result.stress` をそのまま描く。matplotlib は、returnmap を `returnmap[examples]` として入れると一緒に入る (インストールの方法は [トップページ](../index.md))。
 
 ```{literalinclude} ../../examples/example_response.py
 :language: python
