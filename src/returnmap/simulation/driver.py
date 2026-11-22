@@ -570,7 +570,10 @@ class MixedDriver(DriverBase):
         load : FieldHistory
             Must have ``type = FieldType.STRAIN``.  ``load.data`` shape
             ``(N, len(prescribed_strain_idx))`` — cumulative prescribed strain
-            at each step for the P components.
+            at each step for the P components.  With one prescribed component
+            a 1-D array of shape ``(N,)`` is accepted as well, as it is by
+            :class:`~returnmap.simulation.StrainDriver` — the form a measured
+            strain record has.
         prescribed_stress_history : array-like of shape (N, len(prescribed_stress_idx)) or None
             Target stress values for the F components at each step.  If ``None``
             (default), all F components are held at zero.
@@ -603,6 +606,8 @@ class MixedDriver(DriverBase):
                 f"MixedDriver expects load.type=FieldType.STRAIN, got {load.type!r}"
             )
         eps_P_hist = np.asarray(load.data, dtype=float)
+        if eps_P_hist.ndim == 1 and nP == 1:
+            eps_P_hist = eps_P_hist[:, None]
         if eps_P_hist.ndim != 2 or eps_P_hist.shape[1] != nP:
             raise ValueError(
                 f"load.data must have shape (N, {nP}), got {eps_P_hist.shape}"

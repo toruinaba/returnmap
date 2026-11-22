@@ -702,6 +702,20 @@ class TestMixedDriver:
         with pytest.raises(ValueError, match=r"\(N, 1\)"):
             list(driver.iter_run(bad_load))
 
+    def test_one_prescribed_component_takes_a_1d_history(self, integ_3d):
+        """A measured strain record is 1-D; it is the same load as its (N, 1) form."""
+        driver = MixedDriver(integ_3d, prescribed_strain_idx=[0])
+        eps = np.linspace(0.0, 4e-3, 9)[1:]
+        flat = driver.run(strain_load(eps))
+        column = driver.run(strain_load(eps[:, None]))
+        np.testing.assert_array_equal(flat.stress, column.stress)
+        np.testing.assert_array_equal(flat.strain, column.strain)
+
+    def test_validation_1d_history_needs_one_prescribed_component(self, integ_3d):
+        driver = MixedDriver(integ_3d, prescribed_strain_idx=[0, 1])
+        with pytest.raises(ValueError, match=r"\(N, 2\)"):
+            list(driver.iter_run(strain_load(np.zeros(5))))
+
     def test_validation_stress_history_shape_mismatch(self, integ_3d):
         driver = MixedDriver(integ_3d, prescribed_strain_idx=[0])
         N = 5
