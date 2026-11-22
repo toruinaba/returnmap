@@ -3,6 +3,14 @@
 このファイルは、利用者から見える変更を版ごとにまとめる。設計の経緯と理由は
 [`docs/design/api-redesign.md`](docs/design/api-redesign.md) にある。
 
+## 未リリース
+
+- **`MixedDriver` が、ひずみを与える成分が 1 つのとき、1 次元の載荷履歴を受け取る。** 今までは形が
+  `(N, 1)` の配列だけを受け取り、1 次元の配列は `ValueError` になっていた。試験の記録(1 次元の配列)から
+  `FitTarget.stress_strain(strain, stress)` で作ったターゲットを、3D のモデルと
+  `driver_factory=lambda i: MixedDriver(i, prescribed_strain_idx=[0])` で使うと、この誤りになっていた。
+  `StrainDriver` は以前から 1 次元の配列を受け取る。
+
 ## 0.4.0(2026-11-21)
 
 Chaboche モデルを 2 つ足し、文書を整えて公開した。既存のモデルの計算結果は 0.3.2 から変わらない。
