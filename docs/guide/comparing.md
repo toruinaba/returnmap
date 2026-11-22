@@ -161,7 +161,7 @@ AF 3D, Broyden         120/120      111           3.24           2.85   14.117  
 
 ### 解き直しの有無
 
-自動微分の応力更新は、失敗したステップを別の初期値から 1 回解き直す ([概念](../concepts.md) の「非収束との付き合い方」)。`nr_restart=False` の integrator は解き直しを行わない。両者を並べると、解き直しの効果を確認できる。
+自動微分の応力更新は、失敗したステップを別の初期値から 1 回解き直す ([非収束の扱い](nonconvergence.md) の 2 節)。`nr_restart=False` の integrator は解き直しを行わない。両者を並べると、解き直しの効果を確認できる。
 
 ```{literalinclude} ../../examples/example_compare_models.py
 :language: python
@@ -193,4 +193,4 @@ restart (default)    9/9        9          12.67         1   31.152  yes
 
 - 試験データに対するパラメータの同定: [試験データに合わせる](tutorial.md)
 - 2 つの実装の一致の検査: [検査の一覧](verification.md)
-- 非収束の仕組み: [概念](../concepts.md)
+- 非収束の仕組み: [非収束の扱い](nonconvergence.md)

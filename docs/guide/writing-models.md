@@ -116,7 +116,7 @@
 
 既定の流れ方向は関連流れであり、`∂f/∂σ` を自動微分で求める。塑性ポテンシャルが降伏関数と異なる場合、または手導出の式を用いる場合は、`flow` を定義する。`default_stress_residual` は変更しない (残差の代数は変わらない)。
 
-流れ方向には、せん断成分が 2 倍異なる 2 つの Voigt 表現がある。`flow` は配列ではなく `FlowVector` を返し、使用する側が表現を指定する ([概念](../concepts.md) の「Voigt 規約と FlowVector」)。
+流れ方向には、せん断成分が 2 倍異なる 2 つの Voigt 表現がある。`flow` は配列ではなく `FlowVector` を返し、使用する側が表現を指定する ([構成と規約](../concepts.md) の 5 節)。
 
 | 場面 | 書き方 |
 |---|---|
@@ -272,4 +272,4 @@
 
 - モデルを書いて検査する手順: [モデルを書く](model-python.md)
 - 手導出ブロックと近似の宣言: [検査の一覧](verification.md)
-- Voigt 規約と `FlowVector`: [概念](../concepts.md)
+- Voigt 規約と `FlowVector`: [構成と規約](../concepts.md)

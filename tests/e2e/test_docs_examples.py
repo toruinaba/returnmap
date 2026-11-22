@@ -41,6 +41,8 @@ PAGES = {
     "docs/guide/model-hand-written.md": ["examples/model_family/report.py"],
     "docs/guide/model-umat.md": ["examples/model_family/report.py",
                                  "examples/model_family/umat_crosscheck.py"],
+    "docs/guide/service.md": ["examples/example_service.py"],
+    "docs/guide/fitting.md": ["examples/example_fitting.py"],
     "docs/guide/verification.md": ["examples/example_checks.py"],
     # The hooks page shows the source of shipped models, and no output.
     "docs/guide/writing-models.md": [],
@@ -173,6 +175,55 @@ def test_every_line_of_code_on_the_page_comes_from_a_file_that_is_run(page):
         markers = re.findall(r"""^:(?:start|end)-(?:after|at|before): (["'])(.*)\1$""", options, flags=re.M)
         for _, marker in markers:
             assert marker in lines, f"{path.name} includes {target} from {marker!r}, which is not in it"
+
+
+def _pages() -> list[Path]:
+    """Every page of the documentation, the design memo aside (a record, not a guide)."""
+    return sorted(path for path in (REPO / "docs").rglob("*.md")
+                  if "_build" not in path.parts and "design" not in path.parts)
+
+
+def test_no_page_has_a_python_block_of_its_own():
+    """Also the pages that are not built from a script: nothing shown is left unrun."""
+    own = [str(path.relative_to(REPO)) for path in _pages() if _blocks(path, "python")]
+    assert not own, f"these pages hold Python blocks that no test runs: {own}"
+
+
+def test_the_readme_quickstart_is_the_first_cell_of_the_response_script():
+    """README.md is rendered where literalinclude does not exist (GitHub, PyPI),
+    so its one code block is a copy — of code that is run."""
+    script = (REPO / "examples" / "example_response.py").read_text(encoding="utf-8")
+    cell = script.split("# %% 1. 最小の計算\n", 1)[1].split("# %%", 1)[0].strip("\n")
+    blocks = _blocks(REPO / "README.md", "python")
+    assert len(blocks) == 1, "README.md holds one Python block, the quickstart"
+    assert "\n".join(blocks[0]) == cell, (
+        "the quickstart in README.md differs from the first cell of examples/example_response.py")
+
+
+FIGURE_SCRIPTS = sorted((REPO / "docs" / "figures").glob("*.py"))
+
+
+def test_every_figure_on_a_page_is_drawn_by_a_script():
+    """A figure is ``img/<name>.png`` next to the page and ``docs/figures/<name>.py``."""
+    drawn = {script.stem for script in FIGURE_SCRIPTS}
+    shown = set()
+    for path in _pages():
+        for target in re.findall(r"!\[[^\]]*\]\(([^)]+\.png)\)", path.read_text(encoding="utf-8")):
+            image = (path.parent / target).resolve()
+            assert image.is_file(), f"{path.name} shows {target}, which does not exist"
+            assert image.stem in drawn, f"{path.name} shows {target}, but docs/figures/{image.stem}.py does not exist"
+            shown.add(image.stem)
+    assert shown == drawn, f"scripts in docs/figures whose figure no page shows: {sorted(drawn - shown)}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("script", FIGURE_SCRIPTS, ids=lambda script: script.stem)
+def test_a_figure_script_draws_its_figure(script, tmp_path):
+    """Run into a scratch directory: the committed figure is left as it is."""
+    pytest.importorskip("matplotlib")
+    proc = _run([str(script), str(tmp_path)], tmp_path, [REPO / "src"])
+    assert proc.returncode == 0, f"{script.name} failed:\n{proc.stdout}\n{proc.stderr}"
+    assert (tmp_path / f"{script.stem}.png").is_file(), proc.stdout
 
 
 def test_every_script_in_examples_belongs_to_a_page():

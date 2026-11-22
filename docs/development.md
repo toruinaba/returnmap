@@ -43,19 +43,18 @@ uv run pytest src/returnmap/models/yu_kinematic -m "not fortran"    # 1 ファ�
 
 ## 例
 
-| スクリプト | 内容 |
-|-----------|------|
-| `examples/example_checks.py` | [検査の一覧](guide/verification.md) のコード: 検査を 1 つずつ呼び出す |
-| `examples/example_response.py` | [応答を計算する](guide/simulation.md) のコード: モデル、載荷履歴、結果、応力制御と混合制御、非収束時の扱い |
-| `examples/example_j2_damage.py` | J2 + Lemaitre 損傷: 損傷の進展と剛性低下 |
-| `examples/example_j2_damage_crack_closure.py` | crack closure 係数 h による引張/圧縮の違い |
-| `examples/example_j2_damage_unilateral.py` | 準片側モデル: 圧縮での剛性回復 |
-| `examples/example_fit_j2.py` | パラメータフィッティング (基本 / ParameterSpace / 複数ターゲット / PCM) |
-| `examples/example_identification.py` | [試験データに合わせる](guide/tutorial.md) のコード: 候補の比較、フィッティング、全点での仕上げ (約 50 秒) |
-| `examples/notebook_tuning.py` | 同じ調整をスライダーで行う marimo のノートブック (`uv sync --extra notebook`) |
-| `examples/example_compare_models.py` | [モデルを比べる](guide/comparing.md) のコード: 応答、計算コスト、フィットの良さ、パラメータスタディ、解法の比較 |
-| `examples/model_family/` | モデルのリポジトリの雛形: J2 + Voce 硬化を、Python のモデル、手書きの解法、UMAT まで ([新しいモデルを足す](guide/adding-a-model.md) と、それに続く 3 ページのコード)。`report.py` は検査の報告を表示し、`umat_crosscheck.py` は UMAT との比較を個別に実行する (要 gfortran) |
-| `examples/example_service.py` | service 層: registry → describe → run_simulation (非収束込み) |
+`examples/` は、文書のページが取り込むコードのみを持つ。各スクリプトは、対応するページのコードそのものであり、上から順に実行できる。
+
+| スクリプト | 対応するページ | 実行時間 |
+|---|---|---|
+| `examples/example_response.py` | [応答を計算する](guide/simulation.md) | 約 7 秒 |
+| `examples/example_identification.py`、`examples/data/` | [試験データに合わせる](guide/tutorial.md) | 約 50 秒 |
+| `examples/notebook_tuning.py` | 同上 (スライダーで調整する marimo のノートブック。`uv sync --extra notebook`) | — |
+| `examples/example_compare_models.py` | [モデルを比べる](guide/comparing.md) | 約 15 秒 |
+| `examples/model_family/` | [新しいモデルを足す](guide/adding-a-model.md) と、それに続く 3 ページ。モデルのリポジトリの雛形である。`report.py` は検査の報告を表示し、`umat_crosscheck.py` は UMAT との比較を個別に実行する (要 gfortran) | 数秒 |
+| `examples/example_service.py` | [サービスに組み込む](guide/service.md) | 1 秒未満 |
+| `examples/example_fitting.py` | [フィッティングの設定](guide/fitting.md) | 約 1 秒 |
+| `examples/example_checks.py` | [検査の一覧](guide/verification.md) | 約 2 秒 |
 
 ## ドキュメント
 
@@ -75,3 +74,25 @@ make docs            # docs/_build/html/index.html を生成
 - 公開パッケージの `__all__` に載っているのに、リファレンスに項目が無い名前 (docstring の無いクラスや関数、`docs/reference/` に説明の無い定数)
 
 docstring の中で他の名前を参照するときは、公開パッケージのパスで書く (`` :class:`~returnmap.core.MaterialModel` ``)。
+
+### ページの作り方
+
+| 項目 | 規約 |
+|---|---|
+| 文体 | 技術文書の文体で書く。節の最初に範囲を 1〜2 文で述べ、コード、出力、仕様 (表) の順に並べる。見出しは名詞にする。設計の理由は、設計メモと docstring に書く |
+| コード | ページに独自の Python のブロックを置かない。`literalinclude` で、実行されるファイルから取り込む。手順のページは `examples/` のスクリプトの節 (`# %%` の区切り)、仕様のページは組み込みモデルのソース (`src/returnmap/models/`) から取り込む |
+| 出力 | スクリプトが表示するものを載せる。毎回同じ出力は `text` のブロック、実行ごとに変わる数値 (実行時間、フィッティングの結果、丸め誤差の大きさの値) を含む出力は `none` のブロックに書く |
+| 図 | `docs/figures/` のスクリプトが `docs/guide/models/img/` に描く。`make docs-figures` で描き直す (約 1 分) |
+| 例の追加 | `examples/` のスクリプトは、どれかのページから参照する。ページとスクリプトの対応は `tests/e2e/test_docs_examples.py` の `PAGES` に書く |
+
+`tests/e2e/test_docs_examples.py` は、スクリプトを実行し、ページに載せた出力と比較する。
+
+| ブロック | 比較の方法 |
+|---|---|
+| `text` | 各行が、スクリプトの出力の行と 1 文字ずつ一致する |
+| `none` | 数値を伏せ、行、列、文言が一致する |
+
+```bash
+make test-e2e                 # ページのテストを含む (チュートリアルと図は slow、UMAT のページは fortran)
+uv run pytest tests/e2e/test_docs_examples.py     # ページのテストのみ (slow を含む。約 2 分)
+```

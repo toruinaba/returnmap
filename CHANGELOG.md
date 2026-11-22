@@ -5,6 +5,25 @@
 
 ## 未リリース
 
+**文書と例**
+
+- **文書を、利用者がすることの順に組み直した。** 「既存のモデルを使う」(応答を計算する、試験データに合わせる、
+  モデルを比べる)、「自分のモデルを UMAT にする」(新しいモデルを足す、モデルを書く、手書きの解法を照合する、
+  UMAT を確かめる)、「組み込む」(サービスに組み込む)は手順のページ、「解説」(組み込みモデルと次元選択、
+  フィッティングの設定、モデルのフック、検査の一覧、構成と規約、非収束の扱い)は仕様を引くページである。
+  「Fortran UMAT クロス検証」は「UMAT を確かめる」に統合し、「概念」は「構成と規約」と「非収束の扱い」に分けた。
+- **ページのコードは、実行されるファイルから取り込む。** 手順のページは `examples/` のスクリプト、仕様のページは
+  組み込みモデルのソースである。テストがスクリプトを実行し、ページに載せた出力と比べる。
+- **`examples/` は、文書のページに対応するスクリプトだけにした。** `example_response.py`、
+  `example_identification.py`、`example_compare_models.py`、`example_service.py`、`example_fitting.py`、
+  `example_checks.py` と、`model_family/`(`report.py`、`umat_crosscheck.py` を足した)。
+  `example_j2_uniaxial.py`、`example_fit_j2.py`、`example_custom_model_workflow.py`、
+  `example_fortran_crosscheck.py` は削除した(内容は上のスクリプトと文書に移した)。
+- **損傷モデルの図を、定式化のページに載せた。** 図を描くスクリプトは `docs/figures/` に移した
+  (`make docs-figures`)。
+
+**修正**
+
 - **`MixedDriver` が、ひずみを与える成分が 1 つのとき、1 次元の載荷履歴を受け取る。** 今までは形が
   `(N, 1)` の配列だけを受け取り、1 次元の配列は `ValueError` になっていた。試験の記録(1 次元の配列)から
   `FitTarget.stress_strain(strain, stress)` で作ったターゲットを、3D のモデルと

@@ -308,4 +308,4 @@ None
 
 - 段階ごとの手順: [新しいモデルを足す](adding-a-model.md)
 - フックの仕様: [モデルのフック](writing-models.md)
-- 非収束の扱い: [概念](../concepts.md)
+- 非収束の仕組み: [非収束の扱い](nonconvergence.md)
