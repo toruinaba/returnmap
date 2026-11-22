@@ -7,6 +7,7 @@
 | 関数 | 比較するもの | 節 |
 |---|---|---|
 | `check_model(model)` | 以下の検査のうち、そのモデルに該当するものすべて | 1 |
+| `check_range(model)` | 同じ検査を、パラメータの範囲の端と、乱数で作った載荷履歴で行う | 8 |
 | `check_hand_blocks(model, results)` | 手導出したヤコビアンのブロックと、自動微分 | 3 |
 | `check_tangent(integrator, strain_inc, stress_n, state_n)` | 整合接線と、中心差分 | 4 |
 | `check_solution(model, results)` | 手書きのリターンマッピングの解と、自動微分側の残差 | 5 |
@@ -303,6 +304,75 @@ None
 | `tol` | 許容値。既定は `1e-10` |
 
 対応づけたメソッドのうち、`cases` に含めなかったものは、`not checked` として一覧に出る。入力を手で用意する必要があるため、この検査は `check_model` に含まれない。
+
+## 8. パラメータの範囲と乱数の載荷
+
+`check_range` は、`check_model` と同じ比較を、パラメータと載荷の 2 つの方向に広げて行う。`check_model` は 1 組のパラメータと、降伏ひずみに合わせた載荷履歴で検査するため、それ以外の条件でだけ現れる誤りを検出しない。
+
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 8. パラメータの範囲と乱数の載荷"
+```
+
+```none
+J2Isotropic1D over its range: every case passes
+  parameters — check_model at each end of every documented range
+    ok   E=1000              5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   E=1e+06             5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   nu=0                5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   nu=0.49             5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   sigma_y0=1          5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   sigma_y0=5000       5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   H=0                 5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+    ok   H=100000            5 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent)
+  loading — random strain histories
+    ok   random              36 of 36 increments solved, 16 plastic; solution 4.5e-16, hand-written vs autodiff 3.3e-16, tangent 4.2e-10
+    ok   random large        24 of 24 increments solved, 23 plastic; solution 1.6e-15, hand-written vs autodiff 1.5e-15, tangent 2.3e-09
+    ok   random single-step  6 of 6 increments solved, 6 plastic; solution 1.5e-14, hand-written vs autodiff 9.5e-15, tangent 2.6e-08
+1.1e-12 (tol 1e-05) at 4 plastic steps
+```
+
+| 組 | 内容 | 既定 |
+|---|---|---|
+| `parameters` | パラメータを 1 つずつ、`param_meta` の範囲 (`bounds`) の下限と上限に置いたモデル。それぞれを `check_model` にかける | `parameter_variants(model)` |
+| `loading` | 乱数で作ったひずみ履歴。全成分を動かし、6 つの点を直線で結ぶ | `random_histories(model)` |
+
+乱数の履歴は、次の 3 つである。大きさの基準は、`check_model` がそのモデルに用いる履歴 (標準の履歴と、ファミリが宣言した履歴) の最大のひずみ成分である。
+
+| 履歴 | 点の大きさ | 1 区間の増分の数 |
+|---|---|---|
+| `random` | 基準と同じ | 6 |
+| `random large` | 基準の 4 倍 | 4 |
+| `random single-step` | 基準の 20 倍 | 1 |
+
+パラメータの組は、`check_model` と同じ基準で合否を決める。載荷の組は、誤った答えだけを不合格にする。
+
+| 載荷の組の結果 | 扱い |
+|---|---|
+| 手書きの解が残差の根でない (`check_solution`) | 不合格 |
+| 同じ状態から、手書きの経路と自動微分の経路がともに収束し、結果が異なる | 不合格 |
+| 接線が中心差分と一致しない | 不合格 |
+| UMAT が、同じ状態と増分に対して、Python のモデルと異なる結果を返す。または、Python のモデルが解けない増分で収束する | 不合格 |
+| モデル自身の経路 (手書きの解法があればそれ、無ければ自動微分) が解けない増分 | 履歴から除き、直前の解けた状態から続ける。件数を報告する |
+| 手書きの経路が解け、自動微分の経路が解けないステップ | 件数を報告する。手書きの解は残差に代入して確かめる |
+| 塑性の増分を 1 つも解けない履歴 | `—` (`not solved`)。不合格には数えない |
+
+| 項目 | 内容 |
+|---|---|
+| 報告 | `report.passed`、`report.summary()`。`report[名前]` が 1 つの組を返し、`.reports` に元の検査の報告を持つ |
+| UMAT | 宣言されており、ビルドしてある場合に、すべての組で比較する。未ビルドの場合は、載荷の組の行に `UMAT not built` と表示し、Python の側だけで合否を決める |
+| 実行時間 | パラメータの組 1 つにつき `check_model` 1 回分。完成したモデルに対して実行する検査であり、毎回のテストには含めない |
+| 乱数の種 | `check_range(model, seed=...)`。同じモデルと種に対して、同じ履歴になる |
+| 接線の差分の刻み | `check_model` と `check_range` は `1e-7` を用いる。ただし、ステップの応力が弾性で対応するひずみ (`max|σ| / max|C|`) の 1 万分の 1 を超えない。降伏ひずみが小さいパラメータで、刻みが降伏ひずみに対して大きくなりすぎないようにするためである |
+
+パラメータの範囲は、パラメータごとに独立に与えられている。1 つだけを端に置くと意味を失うモデル (境界面が降伏面の内側に入る、など) は、検査する組をファミリの `verification.py` に `variants(model)` として宣言する。`check_range` は、宣言があればそれを `parameter_variants(model)` の代わりに用いる。
+
+| 場合 | 方法 |
+|---|---|
+| 組の宣言 | `variants(model)` が、名前 → モデルの dict を返す。`parameter_variants(model)` の結果から、意味を持つ組を選ぶ |
+| 組を引数で渡す | `check_range(model, variants=...)`。空の dict を渡すと、パラメータの組を省く |
+| 履歴を引数で渡す | `check_range(model, histories=...)`。空の dict を渡すと、載荷の組を省く |
+| 範囲を持たないモデル | `param_meta` に `bounds` が無い場合、パラメータの組は無く、報告の `notes` にその旨が入る |
 
 ## 関連ページ
 

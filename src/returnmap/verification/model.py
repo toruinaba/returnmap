@@ -233,19 +233,29 @@ def standard_histories(
     return histories
 
 
-def _declared_histories(model: MaterialModel) -> dict[str, FieldHistory]:
-    """Histories the model's family declares in its ``verification`` module."""
+def _family_declaration(model: MaterialModel, name: str) -> Callable | None:
+    """What the model's family declares as ``name`` in its ``verification`` module."""
     package = type(model).__module__.rpartition(".")[0]
     if not package:
-        return {}
+        return None
     try:
         module = importlib.import_module(f"{package}.verification")
     except ModuleNotFoundError as exc:
         if exc.name == f"{package}.verification":
-            return {}
+            return None
         raise                       # the module exists and its own import failed
-    declare: Callable | None = getattr(module, "histories", None)
+    return getattr(module, name, None)
+
+
+def _declared_histories(model: MaterialModel) -> dict[str, FieldHistory]:
+    """Histories the model's family declares in its ``verification`` module."""
+    declare = _family_declaration(model, "histories")
     return dict(declare(model)) if declare is not None else {}
+
+
+def _model_histories(model: MaterialModel) -> dict[str, FieldHistory]:
+    """The histories a model is checked on by default: standard, then declared."""
+    return {**standard_histories(model), **_declared_histories(model)}
 
 
 def _worst(errors: list[float]) -> float:
@@ -272,6 +282,28 @@ def _declared_approximate(
         model, declared.approx_when,
         state=result.state, dlambda=result.dlambda, inc=result.increment,
     )
+
+
+def _difference_step(
+    integrator: "StressIntegrator", result: "StressUpdateResult", state_n: Mapping,
+) -> float:
+    """Strain step for differencing the tangent at ``result``.
+
+    The 1e-7 that :func:`check_tangent` uses by default, made smaller for a
+    model whose strains are small: never more than one ten-thousandth of the
+    strain the stress of the step corresponds to elastically
+    (``max|σ| / max|C|``).  A fixed step is a fixed fraction of nothing — at a
+    yield strain a hundred times smaller, its truncation error is ten
+    thousand times larger.  A model with a yield strain of 1e-3 or more is
+    differenced with 1e-7, as before.
+    """
+    default = 1e-7
+    stiffness = np.asarray(integrator.elastic_tangent(state_n["stress"], state_n), dtype=float)
+    stress = np.max(np.abs(np.asarray(result.stress, dtype=float)))
+    scale = stress / np.max(np.abs(stiffness))
+    if not (np.isfinite(scale) and scale > 0.0):
+        return default
+    return min(default, 1e-4 * scale)
 
 
 def _approx_note(n: int, declared: HandTangent | None) -> str:
@@ -311,6 +343,7 @@ def _check_tangents(
                 step_tol = declared.approx
             report = check_tangent(
                 integrator, inc.strain_inc, state_n["stress"], state_n, tol=step_tol,
+                eps=_difference_step(integrator, r, state_n),
             )
             reports[f"{name}[{k}]"] = report
             ok = ok and report.passed
@@ -447,7 +480,7 @@ def check_model(
         notes.append(tangent_record.note)
     approximations = list(dict.fromkeys(note for note in notes if note))
     if histories is None:
-        histories = {**standard_histories(model), **_declared_histories(model)}
+        histories = _model_histories(model)
     if not histories:
         raise ValueError("no loading history to check the model on")
     checks: list[ModelCheck] = []

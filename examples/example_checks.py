@@ -5,9 +5,9 @@
 
     uv run python examples/example_checks.py
 
-実行時間は約 5 秒。対象は組み込みのモデルである: 手導出ブロックと手書きの解法を持つ
-``YUKinematicPS``、閉形式の解を持つ ``J2Isotropic3D``、implicit の状態を持つ
-``OWKinematic3D``。
+実行時間は約 6 秒。対象は組み込みのモデルである: 手導出ブロックと手書きの解法を持つ
+``YUKinematicPS``、閉形式の解を持つ ``J2Isotropic3D`` と ``J2Isotropic1D``、implicit の
+状態を持つ ``OWKinematic3D``。
 """
 
 # %% 1. まとめて検査する
@@ -75,3 +75,12 @@ report = crosscheck(PythonNumericalIntegrator(j2), PythonAnalyticalIntegrator(j2
 assert report.passed, report.summary()
 print(report.summary())
 print(report.first_failure)                                     # 一致しなかった最初のステップ
+
+# %% 8. パラメータの範囲と乱数の載荷
+from returnmap.models import J2Isotropic1D
+from returnmap.verification import check_range
+
+report = check_range(J2Isotropic1D.at_defaults())
+assert report.passed, report.summary()
+print(report.summary())
+print(report["H=0"].reports["model"]["hand-written tangent"].detail)   # 1 つの組の、1 つの行

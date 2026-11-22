@@ -46,8 +46,8 @@ def test_each_name_has_one_home():
                     "FortranModule", "JacobianBlocks", "hand_jacobian",
                     "SubSteppingIntegrator", "compare_models"]),
     ("fitting", ["fit_params", "FitTarget", "Observation", "ParameterSpace", "FitResult"]),
-    ("verification", ["check_model", "check_hand_blocks", "check_solution", "check_tangent",
-                      "crosscheck", "compare_jacobians", "check_bindings",
+    ("verification", ["check_model", "check_range", "check_hand_blocks", "check_solution",
+                      "check_tangent", "crosscheck", "compare_jacobians", "check_bindings",
                       "make_increment"]),
     ("service", ["ModelRegistry", "run_simulation"]),
     ("utils", ["smooth_sqrt", "smooth_macaulay", "smooth_heaviside", "positive_part"]),
@@ -64,7 +64,8 @@ def test_every_check_returns_a_report_with_a_verdict_and_a_table():
     reports = [n for n in _exports("verification") if n.endswith("Report")]
     assert sorted(reports) == [
         "BindingReport", "CrosscheckReport", "HandBlockReport",
-        "JacobianComparisonReport", "ModelReport", "SolutionReport", "TangentReport",
+        "JacobianComparisonReport", "ModelReport", "RangeReport", "SolutionReport",
+        "TangentReport",
     ]
     for name in reports:
         cls = getattr(verification, name)
