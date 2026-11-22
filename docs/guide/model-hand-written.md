@@ -43,6 +43,7 @@ J2Voce3D: every check that applies passes
   ok   hand-written vs autodiff  stress 3.3e-12, state 4.2e-12 (tol 1e-06), tangent 4.8e-12 (tol 1e-05) over 2 histories
   ok   hand-written tangent      4.6e-10 (tol 1e-05) at 8 plastic steps
   —    UMAT                      module voce_3d is not built — returnmap build --family mymodels.voce
+  —    UMAT entry                module voce_3d is not built
   histories: uniaxial (24 plastic steps), multiaxial (23 plastic steps)
 ```
 
@@ -51,7 +52,7 @@ J2Voce3D: every check that applies passes
 | `hand-written solution` | 手書きの解を、フレームワークの残差 (自動微分側の方程式) に代入すると 0 になる |
 | `hand-written vs autodiff` | 2 つの経路を同じ履歴で進め、応力・状態・接線が全ステップで一致する |
 | `hand-written tangent` | 手書きの接線が、応力更新の中心差分と一致する |
-| `UMAT` | 段階 C の検査 ([UMAT を確かめる](model-umat.md))。ビルドしていない環境では `—` であり、不合格には数えない |
+| `UMAT`、`UMAT entry` | 段階 C の検査 ([UMAT を確かめる](model-umat.md))。ビルドしていない環境では `—` であり、不合格には数えない |
 
 基準は自動微分である。2 つの経路が一致しない場合は、手導出の側を先に調べる。
 

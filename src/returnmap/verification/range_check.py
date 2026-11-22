@@ -56,7 +56,10 @@ case therefore fails only on a *wrong answer*:
   converge, from the same state, to different results;
 * a tangent that disagrees with central differences;
 * a compiled UMAT that, given the same state and increment, returns something
-  else than the Python model — or converges where the Python model does not.
+  else than the Python model — or converges where the Python model does not;
+* an ABAQUS entry that returns something else than the UMAT's core — or, on an
+  increment that was not solved, does not hand ``STRESS`` and ``STATEV`` back
+  untouched.
 
 Increments the model's own path (the hand-written return mapping when there
 is one, the autodiff one otherwise) does not solve are left out, the history
@@ -123,7 +126,7 @@ class RangeCase:
         The reports behind the line: ``{"model": ModelReport}`` for a
         parameter variant; for a loading history the underlying checks by
         name (``"solution"``, ``"hand-written vs autodiff"``, ``"tangent"``,
-        ``"hand blocks"``, ``"UMAT"``).
+        ``"hand blocks"``, ``"UMAT"``, ``"UMAT entry"``).
     """
 
     name: str
@@ -462,6 +465,33 @@ def _check_loading(
                 text += (f" — converged on {n_solved_by_umat} increment(s) "
                          "the Python model did not solve")
         record("UMAT", ok, text, report)
+
+        if umat.has_entry():
+            entry = umat.entry_integrator(model, raise_on_nonconverged=False)
+            report = crosscheck(
+                fortran, entry, solved, lockstep=True,
+                stress_tol=stress_tol, state_tol=stress_tol, tangent_tol=10.0 * stress_tol,
+            )
+            errors = [report.max_stress_rel_err, *report.max_state_rel_err.values()]
+            if report.max_tangent_rel_err is not None:
+                errors.append(report.max_tangent_rel_err)
+            text = f"{_worst(errors):.1e}"
+            ok = report.passed
+            # On an increment the model gave up on, the entry has to ask for a
+            # smaller one and hand back the stress and the state untouched.
+            n_moved = 0
+            for strain_inc, stress_n, state_n in unsolved:
+                result = entry.stress_update(strain_inc, stress_n, state_n)
+                kept = np.array_equal(np.asarray(result.stress), np.asarray(stress_n)) and all(
+                    np.array_equal(np.asarray(value), np.asarray(state_n[key]))
+                    for key, value in result.state.items()
+                )
+                n_moved += bool(result.converged) or not kept
+            if n_moved:
+                ok = False
+                text += (f" — on {n_moved} increment(s) the model did not solve, it "
+                         "converged or changed STRESS / STATEV")
+            record("UMAT entry", ok, text, report)
 
     detail = f"{coverage}; " + ", ".join(parts)
     if failures:

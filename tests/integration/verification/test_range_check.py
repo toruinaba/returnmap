@@ -248,17 +248,26 @@ class _StandIn:
     """What ``umat_of`` returns, with a Python integrator in place of the
     compiled module: the comparison is the same, and needs no compiler."""
 
-    def __init__(self, port, *, reads_its_flag=True):
+    def __init__(self, port, *, reads_its_flag=True, entry=None):
         self._port = port
+        self._entry = entry
         self.integrator_options = {"parse_umat_failure": None} if reads_its_flag else {}
 
     def is_built(self):
         return True
 
+    def has_entry(self):
+        return self._entry is not None
+
     def integrator(self, model, **options):
         from returnmap.simulation import PythonIntegrator
 
         return PythonIntegrator(self._port(model), **options)
+
+    def entry_integrator(self, model, **options):
+        from returnmap.simulation import PythonIntegrator
+
+        return PythonIntegrator(self._entry(model), **options)
 
 
 class TestUmatUnderRandomLoading:
@@ -307,6 +316,39 @@ class TestUmatUnderRandomLoading:
         assert all("UMAT" not in case.reports for case in report.cases)
 
 
+class TestEntryUnderRandomLoading:
+    declare = staticmethod(TestUmatUnderRandomLoading.declare)
+
+    def test_a_faithful_entry_agrees_with_the_core(self, monkeypatch):
+        self.declare(monkeypatch, _StandIn(lambda model: model, entry=lambda model: model))
+        report = check_range(J2Isotropic3D.at_defaults(), variants={})
+        assert report.passed, report.summary()
+        assert all(case.reports["UMAT entry"].passed for case in report.cases)
+
+    def test_no_entry_means_no_comparison(self, monkeypatch):
+        self.declare(monkeypatch, _StandIn(lambda model: model))
+        report = check_range(J2Isotropic3D.at_defaults(), variants={})
+        assert all("UMAT entry" not in case.reports for case in report.cases)
+
+    def test_an_entry_that_unpacks_another_constant_fails_its_own_part(self, monkeypatch):
+        self.declare(monkeypatch, _StandIn(
+            lambda model: model, entry=lambda model: model.with_params(H=1.01 * model.H)))
+        report = check_range(J2Isotropic3D.at_defaults(), variants={})
+        for case in report.cases:
+            assert case.status == "failed"
+            assert case.detail.startswith("UMAT entry failed")
+            assert case.reports["UMAT"].passed
+
+    def test_an_entry_that_moves_on_where_the_model_gives_up_fails(self, monkeypatch):
+        sound = J2Isotropic3D.at_defaults()
+        self.declare(monkeypatch, _StandIn(
+            lambda model: model, reads_its_flag=False, entry=lambda model: sound))
+        report = check_range(_GivesUpOnLargeSteps.at_defaults(), variants={})
+        large = report["random large"]
+        assert large.status == "failed"
+        assert "converged or changed STRESS / STATEV" in large.detail
+
+
 @pytest.mark.fortran
 def test_the_compiled_umat_is_compared_in_every_case():
     """With ``j2_isotropic_3d`` built: every variant and every random history."""
@@ -316,8 +358,10 @@ def test_the_compiled_umat_is_compared_in_every_case():
     for case in report.cases:
         if case.group == "parameters":
             assert case.reports["model"]["UMAT"].status == "passed", case.name
+            assert case.reports["model"]["UMAT entry"].status == "passed", case.name
         else:
             assert case.reports["UMAT"].passed, case.name
+            assert case.reports["UMAT entry"].passed, case.name
 
 
 def test_the_tangent_is_differenced_with_a_smaller_step_where_strains_are_small():
