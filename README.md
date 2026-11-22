@@ -17,12 +17,12 @@
 
 ## インストール
 
-**使う** — PyPI には未公開なので、GitHub のタグから入れる (依存は numpy / scipy / autograd):
+**使う** — PyPI には未公開のため、GitHub のタグから入れる (依存は numpy、scipy、autograd)。
 
 ```bash
-pip install "git+https://github.com/toruinaba/returnmap@v0.4.0"
-# 図も描くなら matplotlib を足す:
-pip install "returnmap[examples] @ git+https://github.com/toruinaba/returnmap@v0.4.0"
+pip install "git+https://github.com/toruinaba/returnmap@v0.4.1"
+# 作図も行う場合は matplotlib を追加する:
+pip install "returnmap[examples] @ git+https://github.com/toruinaba/returnmap@v0.4.1"
 ```
 
 **開発する** — リポジトリを取ってきて、テストや Fortran のビルドまで含めた環境を作る:
@@ -106,7 +106,7 @@ print(f"最後の累積塑性ひずみ : {result.history('ep')[-1]:.4f}")
 | [変更履歴](https://toruinaba.github.io/returnmap/changelog.html) | 版ごとの変更と、0.1.0 からの移行の対応表 |
 | [設計メモ](https://toruinaba.github.io/returnmap/design/api-redesign.html) | API 再設計の方針と決定の記録 |
 
-文書のソースは [`docs/`](docs/) と、各モデルの `README.md` (定式化) にある。`main` に入るたびに自動でビルドされ、公開される。手元でビルドするには:
+文書のソースは [`docs/`](https://github.com/toruinaba/returnmap/tree/main/docs) と、各モデルの `README.md` (定式化) にある。`main` に入るたびに自動でビルドされ、公開される。手元でビルドするには:
 
 ```bash
 uv sync --extra docs
@@ -115,4 +115,4 @@ make docs            # → docs/_build/html/index.html
 
 ## License
 
-[MIT License](LICENSE)
+[MIT License](https://github.com/toruinaba/returnmap/blob/main/LICENSE)

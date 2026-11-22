@@ -3,7 +3,9 @@
 このファイルは、利用者から見える変更を版ごとにまとめる。設計の経緯と理由は
 [`docs/design/api-redesign.md`](docs/design/api-redesign.md) にある。
 
-## 未リリース
+## 0.4.1(2026-11-22)
+
+文書を、利用者がすることの順に組み直した。不具合を 1 つ直した。組み込みモデルの計算の結果は 0.4.0 から変わらない。
 
 **文書と例**
 
@@ -21,6 +23,7 @@
   `example_fortran_crosscheck.py` は削除した(内容は上のスクリプトと文書に移した)。
 - **損傷モデルの図を、定式化のページに載せた。** 図を描くスクリプトは `docs/figures/` に移した
   (`make docs-figures`)。
+- **雛形(`examples/model_family/`)が依存する returnmap の版を `v0.4.1` にした。** 今までは `v0.3.2` のままだった。
 
 **修正**
 
@@ -29,6 +32,13 @@
   `FitTarget.stress_strain(strain, stress)` で作ったターゲットを、3D のモデルと
   `driver_factory=lambda i: MixedDriver(i, prescribed_strain_idx=[0])` で使うと、この誤りになっていた。
   `StrainDriver` は以前から 1 次元の配列を受け取る。
+
+**配布**
+
+- **sdist の中身を絞った** — パッケージ本体(`src/`)と README、変更履歴、ライセンスだけにした。今までは
+  リポジトリのほぼ全部(文書、例、開発用のファイル)が入っていた。wheel の中身は変わらない。
+- **パッケージの情報** — 分類(classifiers)、キーワード、変更履歴と Issue へのリンクを足した。
+- **README の中のリポジトリ内への相対リンクを、絶対 URL に変えた。**
 
 ## 0.4.0(2026-11-21)
 
