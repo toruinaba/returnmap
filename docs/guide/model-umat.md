@@ -57,7 +57,10 @@ UMAT を、ファミリの `verification.py` の `UMATS` に宣言する。ビ�
 uv sync --extra dev --extra fortran           # meson、ninja を追加する
 uv run returnmap build --family mymodels      # 宣言された UMAT をすべてビルドする
 uv run returnmap list                         # ビルド済みのモジュールの一覧
+uv run returnmap check --family mymodels --require-built   # 検査。未ビルドの UMAT を不合格に数える
 ```
+
+UMAT を 1 つも宣言していないパッケージに対しては、`returnmap build --family` は何もビルドせずに終了する (終了コード 0)。UMAT を足す前と後で、同じコマンドの組を使える。
 
 ソースを直接指定してビルドする場合は、次の指定を用いる。
 

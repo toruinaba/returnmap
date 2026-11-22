@@ -8,6 +8,7 @@ Covers:
 - TestSolverNonconverged: raise_on_nonconverged=False behaviour
 - TestInadmissibleRoot: a tightly converged root with Δλ < 0 is rejected
 - TestRestart: a failed attempt from Δλ = 0 is followed by one from a plastic estimate
+- TestTangentOfAStepThatDidNotConverge: no tangent is formed at an iterate
 """
 
 import autograd.numpy as anp
@@ -1896,3 +1897,61 @@ class TestElasticTangentHook:
             r = cls(m).stress_update(deps, np.zeros(6), m.initial_state())
             np.testing.assert_array_equal(
                 np.asarray(r.ddsdde), np.asarray(m.elastic_stiffness(m.initial_state())))
+
+
+# ---------------------------------------------------------------------------
+# The tangent of a step that did not converge
+# ---------------------------------------------------------------------------
+
+class _GivesUp(J2Isotropic3D):
+    """Reports "not converged" with an iterate its tangent was not written for."""
+
+    def user_defined_return_mapping(self, inc):
+        from returnmap.core import ReturnMappingResult
+
+        rm = super().user_defined_return_mapping(inc)
+        return ReturnMappingResult(
+            stress=rm.stress, state=rm.state, dlambda=np.array(np.nan),
+            n_iterations=3, residual_history=[1.0, 1.0, 1.0, 1.0], converged=False,
+        )
+
+    def user_defined_tangent(self, new, dlambda, inc):
+        raise AssertionError("the tangent of a step that did not converge was asked for")
+
+
+class TestTangentOfAStepThatDidNotConverge:
+    """A failure reported as a value stays a value: the result says "not
+    converged" and carries the elastic tangent, whichever path failed."""
+
+    STRAIN_INC = np.array([5e-3, 0.0, 0.0, 1e-3, 0.0, 0.0])
+
+    def test_a_hand_written_tangent_is_not_called(self):
+        model = _GivesUp.at_defaults()
+        for integrator_cls in (PythonIntegrator, PythonAnalyticalIntegrator):
+            integrator = integrator_cls(model, raise_on_nonconverged=False)
+            result = integrator.stress_update(self.STRAIN_INC, np.zeros(6), model.initial_state())
+            assert not result.converged
+            np.testing.assert_array_equal(
+                result.ddsdde, model.elastic_stiffness(model.initial_state()))
+
+    def test_the_autodiff_tangent_is_not_formed_at_an_iterate(self):
+        model = OWKinematic3D.at_defaults()
+        integrator = PythonNumericalIntegrator(
+            model, max_iter=1, nr_restart=False, raise_on_nonconverged=False)
+        result = integrator.stress_update(self.STRAIN_INC, np.zeros(6), model.initial_state())
+        assert not result.converged
+        np.testing.assert_array_equal(
+            result.ddsdde, model.elastic_stiffness(model.initial_state()))
+
+    def test_with_the_default_switch_the_step_still_raises(self):
+        model = _GivesUp.at_defaults()
+        with pytest.raises(RuntimeError, match="converged=False"):
+            PythonIntegrator(model).stress_update(
+                self.STRAIN_INC, np.zeros(6), model.initial_state())
+
+    def test_a_step_that_converges_gets_its_own_tangent(self):
+        model = J2Isotropic3D.at_defaults()
+        integrator = PythonIntegrator(model, raise_on_nonconverged=False)
+        result = integrator.stress_update(self.STRAIN_INC, np.zeros(6), model.initial_state())
+        assert result.converged
+        assert not np.array_equal(result.ddsdde, model.elastic_stiffness(model.initial_state()))
