@@ -327,3 +327,37 @@ class TestMeasure:
         )
         assert result.passed, result.summary()
         assert result.max_state_rel_err["residue"] < 1e-6
+
+    def test_a_reference_tangent_that_vanishes_is_measured_against_the_largest_of_the_run(self):
+        """Perfect plasticity in one dimension: the tangent is zero.  The
+        autodiff tangent comes out as exactly 0.0 on one platform and as 1e-11
+        on another; against the hand-written zero that is not a 100 % error."""
+        from returnmap.models import J2Isotropic1D
+
+        model = J2Isotropic1D(E=210_000.0, nu=0.3, sigma_y0=250.0, H=0.0)
+
+        class _RoundOffOnThePlateau(PythonNumericalIntegrator):
+            """The autodiff integrator, with ``offset`` left on the tangent of a plastic step."""
+
+            def __init__(self, offset):
+                super().__init__(model)
+                self._offset = offset
+
+            def stress_update(self, strain_inc, stress_n, state_n):
+                result = super().stress_update(strain_inc, stress_n, state_n)
+                if result.is_plastic:
+                    result.ddsdde = np.asarray(result.ddsdde) + self._offset
+                return result
+
+        load = FieldHistory(FieldType.STRAIN, generate_strain_history(model))
+        hand = PythonAnalyticalIntegrator(model)
+
+        report = crosscheck(_RoundOffOnThePlateau(1.158e-11), hand, load)
+        assert report.passed, report.summary()
+        assert report.max_tangent_rel_err == pytest.approx(1.158e-11 / 210_000.0, rel=1e-3)
+
+        # A tangent on the plateau that is not round-off is still an error.
+        assert not crosscheck(_RoundOffOnThePlateau(2_100.0), hand, load).passed
+        # The other way round, too: a candidate that reports stiffness where
+        # the reference has none.
+        assert not crosscheck(hand, _RoundOffOnThePlateau(2_100.0), load).passed

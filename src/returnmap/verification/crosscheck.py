@@ -62,6 +62,7 @@ import numpy as np
 from returnmap.simulation.driver import default_driver_for
 from returnmap.simulation.types import FieldHistory
 from returnmap.verification._measure import NOISE_FLOOR, max_abs, rel_err
+from returnmap.verification.tangent import ZERO_TANGENT
 
 if TYPE_CHECKING:
     from returnmap.core.result import StressUpdateResult
@@ -264,7 +265,12 @@ def crosscheck(
     unloading, or a backstress still near zero, does not turn round-off into a
     large relative error.  A state variable that stays twelve orders below the
     largest quantity of the run is treated as zero.  The tangent is compared
-    against the largest entry of the reference tangent of the same step.
+    against the largest entry of the reference tangent of the same step —
+    unless that tangent vanishes (a yield plateau, perfect plasticity in one
+    dimension): a reference tangent eight orders below the largest one the
+    run has had, the elastic one included, is round-off of a zero, and the
+    difference is measured against that largest tangent instead.  Whether a
+    zero comes out as exactly ``0.0`` or as ``1e-11`` depends on the platform.
 
     Only the state variables both results carry are compared (a Fortran UMAT
     result has no ``"stress"`` entry in its state; stress is compared on its
@@ -315,6 +321,15 @@ def crosscheck(
     stress_scale = 0.0
     state_scale: dict[str, float] = {}
     run_scale = 0.0
+    # The largest reference tangent of the run so far, starting from the
+    # elastic one where the reference can give it.
+    try:
+        tangent_scale = max_abs(integrator_a.elastic_tangent(
+            np.zeros(integrator_a.ntens), integrator_a.initial_state()))
+    except Exception:
+        tangent_scale = 0.0
+    if not np.isfinite(tangent_scale):
+        tangent_scale = 0.0
 
     for index, ra, a_ok, rb, b_ok in paired():
         stress_a = np.asarray(ra.stress, dtype=float)
@@ -338,7 +353,11 @@ def crosscheck(
         if ra.ddsdde is not None and rb.ddsdde is not None:
             da = np.asarray(ra.ddsdde, dtype=float)
             db = np.asarray(rb.ddsdde, dtype=float)
-            t_err = rel_err(max_abs(db - da), max_abs(da))
+            own = max_abs(da)
+            if np.isfinite(own):
+                tangent_scale = max(tangent_scale, own)
+            vanishes = own < ZERO_TANGENT * tangent_scale
+            t_err = rel_err(max_abs(db - da), tangent_scale if vanishes else own)
 
         passed = (
             a_ok and b_ok
