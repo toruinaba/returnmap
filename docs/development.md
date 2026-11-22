@@ -96,3 +96,34 @@ docstring の中で他の名前を参照するときは、公開パッケージ�
 make test-e2e                 # ページのテストを含む (チュートリアルと図は slow、UMAT のページは fortran)
 uv run pytest tests/e2e/test_docs_examples.py     # ページのテストのみ (slow を含む。約 2 分)
 ```
+
+## リリース
+
+版は PyPI (<https://pypi.org/project/returnmap/>) に公開する。PyPI に上げた版は、差し替えも、同じ番号での上げ直しもできない (可能なのは、取り下げの印を付けることのみである)。そのため、公開の契機はタグの作成ではなく、GitHub Release の公開とする。
+
+| 手順 | 内容 |
+|---|---|
+| 1. 版を上げる | プルリクエストで、`pyproject.toml` の `version`、`src/returnmap/__init__.py` の予備の値、`uv lock`、`CHANGELOG.md` の節を変更する |
+| 2. Release を公開する | `main` に入った後、その版の GitHub Release を公開する。タグは `v` + 版とする |
+| 3. 公開の workflow | GitHub Actions (`.github/workflows/publish.yml`) が、下の表の処理を行う |
+| 4. 確認する | 新しい環境で `pip install returnmap==<版>` を実行する |
+
+```bash
+gh release create v<版> --target main --title "v<版>" --notes "変更履歴: https://toruinaba.github.io/returnmap/changelog.html"
+```
+
+| workflow の処理 | 内容 |
+|---|---|
+| 版の確認 | リリースのタグが、`pyproject.toml` の版と一致すること |
+| ビルド | `uv build` で sdist と wheel を作る |
+| wheel のテスト | wheel を checkout の外の環境に入れ、モデルのテスト (`pytest --pyargs returnmap.models -m "not slow"`) を実行する。公開するものそのものを試すためである |
+| 公開 | PyPI にアップロードする |
+
+途中で失敗した場合、何も公開されない。修正して再実行できる。
+
+| 項目 | 内容 |
+|---|---|
+| 認証 | Trusted Publishing を用いる。トークンはリポジトリに置かない。PyPI 側に、このリポジトリの `publish.yml` (environment は `pypi`) を公開元として登録してある |
+| プルリクエストでの実行 | `pyproject.toml` または `publish.yml` を変更するプルリクエストでは、ビルドと wheel のテストのみを行う (公開は行わない) |
+| sdist の内容 | `src/`、README、変更履歴、ライセンスのみ (`pyproject.toml` の `[tool.hatch.build.targets.sdist]`) |
+| 手元でのビルド | `uv build` |

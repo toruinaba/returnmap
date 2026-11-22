@@ -3,6 +3,16 @@
 このファイルは、利用者から見える変更を版ごとにまとめる。設計の経緯と理由は
 [`docs/design/api-redesign.md`](docs/design/api-redesign.md) にある。
 
+## 未リリース
+
+**配布**
+
+- **`pip install returnmap`** — PyPI に公開する。GitHub のタグからの入れ方
+  (`pip install "git+https://github.com/toruinaba/returnmap@<タグ>"`)も使える。
+- **公開の手順** — GitHub Release を公開すると、GitHub Actions(`.github/workflows/publish.yml`)が sdist と wheel を
+  作り、wheel を入れた環境でモデルのテストを通してから PyPI に上げる。リリースのタグが `pyproject.toml` の版と
+  合わなければ止まる。手順は「開発」のページにある。
+
 ## 0.4.1(2026-11-22)
 
 文書を、利用者がすることの順に組み直した。不具合を 1 つ直した。組み込みモデルの計算の結果は 0.4.0 から変わらない。
