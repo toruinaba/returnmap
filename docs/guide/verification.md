@@ -1,212 +1,311 @@
-# 検証ワークフロー
+# 検査の一覧
 
-検査はどれも「関数が報告を返す」形をしている。報告は合否 `report.passed` と、その内訳の表 `report.summary()` を持つので、テストはどの検査でも同じ 1 行になる:
+`returnmap.verification` の検査と、誤差の測り方を示す。モデルを段階ごとに検査する手順は [新しいモデルを足す](adding-a-model.md) にあり、このページは個々の検査の仕様を扱う。
 
-```python
-assert report.passed, report.summary()
-```
+検査はすべて関数であり、報告を返す。報告は、合否 `report.passed` と、内訳の表 `report.summary()` を持つ。テストは、どの検査でも `assert report.passed, report.summary()` の 1 行になる。
 
-| 関数 | 比べるもの |
-|---|---|
-| `check_model(model)` | 下の検査のうち、そのモデルに当てはまるもの全部 |
-| `check_hand_blocks(model, results)` | 手導出したヤコビアンのブロック ↔ 自動微分 |
-| `check_solution(model, results)` | 手書きのリターンマッピングの解 ↔ 自動微分側の残差 |
-| `check_tangent(integrator, strain_inc, stress_n, state_n)` | consistent tangent ↔ 中心差分 |
-| `crosscheck(integrator_a, integrator_b, load)` | 2 つの実装 (同じ載荷履歴) |
-| `compare_jacobians(model, result_a, result_b)` | 同じステップの 2 つの解でのヤコビアン |
-| `check_bindings(model, fortran, cases)` | Fortran に対応づけたメソッド ↔ そのサブルーチン |
-
-**誤差の測り方は全検査で同じ** — 配列 (ブロック、接線、応力ベクトル) 全体の最大差を、参照側の最大値で割る: `max|候補 − 参照| / max|参照|`。合格は `誤差 <= tol`。成分ごとに割らないので、厳密には 0 の成分に乗った丸め誤差を 100 % の誤差とは数えない。分母に単位を持つ定数を置かないので、モデルを MPa で書いても Pa で書いても同じ許容値が同じ意味を持つ。 `check_solution` の残差の行だけは、比べる相手の配列が無いので、行を構成する項の大きさに対して測る (手順 4)。`check_tangent` は、接線が 0 のステップ (降伏棚、1 次元の完全塑性) では差分が丸め誤差しか返さないので、弾性剛性に対して測る。
-
-## まとめて検査する — `check_model`
-
-`check_model` は、モデルが持っているものに応じて当てはまる検査を全部走らせ、何を検査したかを報告する。
-
-```python
-from returnmap.verification import check_model
-
-report = check_model(YUKinematic1D.at_defaults())     # at_defaults: param_meta の目安の値で作る
-assert report.passed, report.summary()
-print(report.summary())
-# YUKinematic1D: every check that applies passes
-#   ok   converges                 71 steps over 2 histories, 57 plastic
-#   ok   tangent                   4.0e-09 (tol 1e-05) at 8 plastic steps
-#   —    hand blocks               no @hand_block on the model
-#   —    hand-written solution     no user_defined_return_mapping on the model
-#   —    hand-written vs autodiff  no user_defined_return_mapping on the model
-#   —    hand-written tangent      no user_defined_return_mapping on the model
-#   histories: uniaxial (24 plastic steps), reversed 2 % (33 plastic steps)
-```
-
-| 行 | 検査するもの | 対象になる条件 |
+| 関数 | 比較するもの | 節 |
 |---|---|---|
-| `converges` | 自動微分の経路が、どの載荷履歴でも最後まで収束する (Δλ ≥ 0、有限の値、塑性ステップがある) | 常に |
-| `tangent` | その接線 ↔ 中心差分 (`check_tangent`、履歴ごとに数ステップ) | 常に |
-| `hand blocks` | 手導出ブロック ↔ 自動微分 (`check_hand_blocks`) | `@hand_block` がある |
-| `hand-written solution` | 手書きの解 ↔ 自動微分側の残差 (`check_solution`) | `user_defined_return_mapping` がある |
-| `hand-written vs autodiff` | 手書きの経路 ↔ 自動微分の経路。応力・状態・接線を全ステップで (`crosscheck`) | 同上 |
-| `hand-written tangent` | 手書きの接線 ↔ 中心差分 | `user_defined_tangent` がある |
-| `UMAT` | コンパイルした UMAT ↔ Python のモデル。同じ履歴を全ステップで (`crosscheck`) | UMAT が宣言されていて、ビルドしてある |
+| `check_model(model)` | 以下の検査のうち、そのモデルに該当するものすべて | 1 |
+| `check_hand_blocks(model, results)` | 手導出したヤコビアンのブロックと、自動微分 | 3 |
+| `check_tangent(integrator, strain_inc, stress_n, state_n)` | 整合接線と、中心差分 | 4 |
+| `check_solution(model, results)` | 手書きのリターンマッピングの解と、自動微分側の残差 | 5 |
+| `crosscheck(integrator_a, integrator_b, load)` | 同じ載荷履歴を進めた 2 つの実装 | 6 |
+| `compare_jacobians(model, result_a, result_b)` | 同じステップの 2 つの解における残差のヤコビアン | 6 |
+| `check_bindings(model, fortran, cases)` | Fortran に対応づけたメソッドと、そのサブルーチン | 7 |
 
-- **Python のモデルだけで止まってよい。** 自動微分で解くだけのモデルは上の 2 行で検査され、それで合格する。`—` の行は「宣言していない」で、不合格ではない。手導出や手書きの解法を足すと、その行が検査されるようになる。
-- **失敗した行の内訳** は `report["hand blocks"].reports` などから取れる (元の検査の報告が入っている)。
-- **UMAT は、宣言してあってビルド済みなら突き合わせる。** 宣言はファミリの `verification.py` の `UMATS` ([UMAT を確かめる](model-umat.md))。未ビルドなら行は `not built` になり、不合格ではない (gfortran の無い環境でも検査は通る)。比べる相手は `PythonIntegrator(model)` — 手書きのリターンマッピングがあればそれ (UMAT はその移植)、無ければ自動微分。
-- **この検査で分からないこと**: 定式化そのものが意図どおりか。どの行も「同じモデルの 2 つの導出」を比べているので、全部が共有する仮定 (単位、符号の規約、定式化) は素通りする。`verified_against_fortran` で対応づけた個々のサブルーチンは、入力を手で用意する必要があるので `check_bindings` で別に検査する。
+コードは [`examples/example_checks.py`](https://github.com/toruinaba/returnmap/blob/main/examples/example_checks.py) の各節と、組み込みモデルのソースである。
 
-**載荷履歴** — 何も渡さなければ、モデルの降伏ひずみに合わせた標準の履歴 2 本を使う: 単軸の引張 → 除荷 → 圧縮と、直応力成分とせん断成分を同時に動かして途中で向きを変える多軸の履歴 (転置した外積やせん断の ×2 の誤りは、単軸では見えない)。
+## 誤差の測り方
 
-弾性域の無いモデル (下負荷面モデルなど) は降伏ひずみが定まらないので、尺度のひずみを渡して標準の履歴を作り、同じ名前で宣言して置き換える: `def histories(model): return standard_histories(model, eps_y=model.F0 / model.E)`。
+誤差の定義は、全検査で共通である。
 
-そのモデルの機構が標準の履歴では働かないときは、ファミリの `verification.py` に `histories(model)` を書いて履歴を足す。`check_model` は、モデルのモジュールの隣にあるその名前のモジュールを自分で見つける (登録は要らない):
+| 項目 | 定義 |
+|---|---|
+| 誤差 | `max|候補 − 参照| / max|参照|`。配列 (ブロック、接線、応力ベクトル) 全体で測る |
+| 合格 | `誤差 <= tol` |
+| 成分ごとに割らない理由 | 厳密には 0 である成分に乗った丸め誤差を、100 % の誤差と数えないため |
+| 分母に単位を持つ定数を置かない理由 | モデルを MPa で書いても Pa で書いても、同じ許容値が同じ意味を持つようにするため |
+| NaN | 最悪の誤差として扱う |
 
-```python
-# src/returnmap/models/yu_kinematic/verification.py
-MODELS = [YUKinematic3D.at_defaults(), YUKinematicPS.at_defaults(), YUKinematic1D.at_defaults()]
+比較する相手の配列が無い量は、次の尺度に対して測る。
 
-def histories(model):
-    """2 % の反転繰返し — C_1 → C_2 の切り替えと停留曲面は、降伏ひずみの 5 倍では働かない。"""
-    return {"reversed 2 %": FieldHistory.cyclic_strain(
-        [0.02, -0.02, 0.02], n_per_segment=12, ntens=model.ntens)}
+| 量 | 尺度 |
+|---|---|
+| `check_solution` の残差の行 | その行を構成する項の大きさ (5 節) |
+| 厳密に 0 のヤコビアンのブロック | その行と列から決まる大きさ (行を構成する項の大きさ ÷ 未知数の大きさ)。これより 12 桁以上小さいブロックを 0 と見なす |
+| 0 の接線 (降伏棚、1 次元の完全塑性) | 弾性剛性。差分の接線が弾性剛性より 8 桁以上小さい場合に適用する |
+
+## 1. まとめて検査する
+
+`check_model` は、モデルが宣言しているものに応じて、該当する検査をすべて実行する。
+
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 1. まとめて検査する"
+:end-before: "# %%"
 ```
 
-`MODELS` は、そのファミリのテスト (`tests/test_verification.py`) が `check_model` にかけるモデルの一覧。`check_model(model, histories)` と履歴を渡したときは、渡したものだけを使う。
-
-## 検査を 1 つずつ使う
-
-新しいモデルを実装するときの推奨手順:
-
-1. **数値収束の確認** — `PythonNumericalIntegrator` で残差が落ちることを確認。`result.residual_history` で NR 収束履歴 (二次収束なら桁が倍々で落ちる) を見られる
-2. **ヤコビアンのブロック検証** — AD の残差ヤコビアンを名前付きブロックで取り出し、手導出の参照にする:
-
-```python
-integrator = PythonIntegrator(model)
-result = integrator.stress_update(deps, stress_n, state_n)
-jac = integrator.jacobian(result)   # result が自分の Increment を持っている
-jac.part["alpha"]["stress"]    # ∂R_alpha/∂σ
-jac.part["dlambda"]["dlambda"]
+```none
+YUKinematic1D: every check that applies passes
+  ok   converges                 71 steps over 2 histories, 57 plastic
+  ok   tangent                   4.0e-09 (tol 1e-05) at 8 plastic steps
+  —    hand blocks               no @hand_block on the model
+  —    hand-written solution     no user_defined_return_mapping on the model
+  —    hand-written vs autodiff  no user_defined_return_mapping on the model
+  —    hand-written tangent      no user_defined_return_mapping on the model
+  —    UMAT                      no UMAT declared for YUKinematic1D in returnmap.models.yu_kinematic.verification
+  histories: uniaxial (24 plastic steps), reversed 2 % (33 plastic steps)
 ```
 
-   手導出したブロックは、モデル上で `hand_block` を付けて「どのブロックか」を宣言する。メソッド自体は変わらず、直接呼ぶことも `verified_against_fortran` と重ねることもできる:
+| 行 | 検査の内容 | 対象になる条件 |
+|---|---|---|
+| `converges` | 自動微分の経路が、すべての載荷履歴で最後まで収束する (Δλ ≥ 0、有限の値、塑性ステップがある) | 常に |
+| `tangent` | 整合接線と中心差分の一致 (`check_tangent`、履歴ごとに数ステップ) | 常に |
+| `hand blocks` | 手導出ブロックと自動微分の一致 (`check_hand_blocks`) | `@hand_block` がある |
+| `hand-written solution` | 手書きの解が、自動微分側の残差を満たす (`check_solution`) | `user_defined_return_mapping` がある |
+| `hand-written vs autodiff` | 手書きの経路と自動微分の経路の一致。応力・状態・接線を全ステップで比較する (`crosscheck`) | 同上 |
+| `hand-written tangent` | 手書きの接線と中心差分の一致 | `user_defined_tangent` がある |
+| `UMAT` | コンパイルした UMAT と Python のモデルの一致。同じ履歴を全ステップで比較する (`crosscheck`) | UMAT が宣言されており、ビルドしてある |
 
-```python
-from returnmap.core import hand_block
+| 項目 | 内容 |
+|---|---|
+| `—` の行 | 宣言していない項目。不合格には数えない。自動微分で解くだけのモデルは、上の 2 行で検査され、合格する |
+| 行の内訳 | `report["hand blocks"].reports` などから、元の検査の報告を取り出せる ([手書きの解法を照合する](model-hand-written.md) の 4 節) |
+| UMAT の比較相手 | `PythonIntegrator(model)`。手書きのリターンマッピングがあればそれ、無ければ自動微分である |
+| 未ビルドの UMAT | 行は `not built` になり、不合格には数えない ([UMAT を確かめる](model-umat.md)) |
+| 検査できないこと | 定式化が意図どおりであるか。どの行も、同じモデルの 2 つの導出を比較する。全体が共有する仮定 (単位、符号の規約、定式化) は検出できない |
 
-class MyModel(MaterialModel):
-    @hand_block("alpha", "stress")                 # ∂R_alpha/∂σ
-    def dRa_ds(self, state, dlambda): ...
+### 載荷履歴
 
-    @hand_block("alpha", "dlambda", approx=2e-2,   # 意図した近似は許容値と理由を宣言
-                note="r_max を凍結して導出している")
-    def dRa_dl(self, state, dlambda, state_n): ...
+履歴を渡さない場合、モデルの降伏ひずみに合わせた標準の履歴を用いる。
+
+| 履歴 | 内容 |
+|---|---|
+| `uniaxial` | 単軸の引張 → 除荷 → 圧縮 |
+| `multiaxial` | 直応力成分とせん断成分を同時に動かし、途中で方向を変える (多成分のモデルのみ)。転置した外積や、せん断の ×2 の誤りは、単軸の履歴では検出できない |
+
+標準の履歴では機構が働かないモデルは、ファミリの `verification.py` に `histories(model)` を定義し、履歴を追加する。`check_model` は、モデルのモジュールの隣にあるこのモジュールを自動で読む (登録は不要である)。
+
+```{literalinclude} ../../src/returnmap/models/yu_kinematic/verification.py
+:language: python
+:pyobject: histories
 ```
 
-   引数は名前で埋められる (`state` = 評価点の状態、`dlambda`、`state_n`、`inc`)。Fortran の引数リストに合わせた手書きのまま宣言できる。
+| 場合 | 方法 |
+|---|---|
+| 履歴の追加 | `histories(model)` が、名前 → 載荷履歴の dict を返す |
+| 標準の履歴の置き換え | 標準と同じ名前 (`uniaxial`、`multiaxial`) で宣言する |
+| 弾性域の無いモデル (下負荷面モデルなど) | 降伏ひずみが定まらないため、尺度のひずみを渡して標準の履歴を作る: `standard_histories(model, eps_y=...)` |
+| 履歴を引数で渡す | `check_model(model, histories)`。渡した履歴のみを用いる |
 
-   **意図した近似は、モデル上で宣言する** (テストの許容値を緩めない — 理由が残らないため)。宣言の仕方は 2 つある:
+`verification.py` の `MODELS` は、そのファミリのテスト (`tests/test_verification.py`) が `check_model` にかけるモデルの一覧である。
 
-   | 宣言 | 意味 | 向く場合 |
-   |---|---|---|
-   | `approx=2e-2` | 全ステップで、自動微分との差がこの値まで | 導出から落とした項が、どのステップにもある |
-   | `approx_when="メソッド名"` | そのメソッドが真を返すステップだけ近似。ほかのステップは厳密な許容値のまま | 切り替えを定数として微分している (切り替わるステップだけ合わない) |
+## 2. 残差のヤコビアン
 
-   `approx_when` のステップは比較から外して数える (報告に「78 ステップ中 3 ステップは近似」と出る)。`approx=` も付けると、外さずにその値で判定する。どちらも `note=` (理由) が必須。条件のメソッドは、ブロックと同じく引数を名前で受け取り、真偽を返す。手書きの接線 (`user_defined_tangent`) は `hand_tangent` で同じように宣言する:
+`integrator.jacobian(result)` は、1 ステップの解における残差のヤコビアン (自動微分) を、名前付きのブロックで返す。手導出の参照として用いる。
 
-```python
-from returnmap.core import hand_block, hand_tangent
-
-class MyModel(MaterialModel):
-    def gate_in_transition(self, state, state_n):       # 条件: ゲートが 0 でも 1 でもない
-        ...
-
-    @hand_block("theta", "beta", approx_when="gate_in_transition",
-                note="ゲートを定数として微分している")
-    def dRt_db(self, state, dlambda, state_n): ...
-
-    @hand_tangent(approx_when="gate_in_transition", note="同上")
-    def user_defined_tangent(self, new, dlambda, inc): ...
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 2. 残差のヤコビアン"
+:end-before: "# %%"
 ```
 
-   組み込みの YU (3D と平面応力) がこの形で、停留曲面のゲートが切り替わるステップを宣言している。接線の宣言を読むのは `check_model` で、`check_tangent` と `crosscheck` は渡された許容値で判定する (integrator を受け取るので、モデルの宣言を知らない)。
-
-   宣言済みブロックは履歴全体で AD と照合する:
-
-```python
-from returnmap.verification import check_hand_blocks
-
-report = check_hand_blocks(model, driver.run(load).step_results)
-assert report.passed, report.summary()
-# hand blocks: 16/25 derived, checked at 57 plastic steps — all within tolerance
-#   ok   [alpha][stress] dRa_ds: 2.092e-16 (tol 1e-08, worst at point 18)
-#   ...
-#   not derived: [stress][stress], [stress][dlambda], ...
+```none
+['stress', 'dlambda', 'alpha', 'ep']
+(6, 6)
+[ 0.961 -0.48  -0.48   0.48   0.     0.   ]
 ```
 
-   最悪誤差をブロックごとに集計するので、1 つの誤りが他に隠れない。未導出のブロックも一覧に出る。ブロックの誤差は、履歴全体での最大差を、そのブロックの履歴全体での最大値で割ったもの — 符号の誤りは 2、0 と置いて落としたブロックは 1 と読める (あるステップでブロックがたまたま 0 に近くても、丸め誤差が大きな誤差にはならない)。厳密に 0 のブロックは、自動微分が丸め誤差 (1e-13 など) を返すので、割る相手が無い。その行と列から決まる大きさ (行を構成する項の大きさ ÷ 未知数の大きさ) より 12 桁以上小さいブロックは 0 と見なし、その大きさに対して測る。`hand_jacobian(model, result)` (`returnmap.simulation`) は、宣言済みブロックを手導出、残りを AD で埋めた行列を返す。**履歴は直ひずみとせん断を同時に動かすこと** — 外積の転置や剪断 ×2 の取り違えは、単軸・純せん断では見えない。
+行と列は、応力更新の未知数 `[σ, Δλ, implicit の状態]` である。`jac.part[行][列]` が 1 つのブロックを返す。
 
-3. **FD tangent チェック** — consistent tangent を中心差分と比較:
+## 3. 手導出ブロックの宣言と照合
 
-```python
-from returnmap.verification import check_tangent
+手導出したブロックは、モデル上で `@hand_block(行, 列)` を付けて宣言する。メソッド自体は変わらず、直接呼ぶことも、`verified_against_fortran` と重ねることもできる。次は `YUKinematicPS` の宣言である。
 
-report = check_tangent(PythonIntegrator(model), strain_inc, stress_n, state_n)
-assert report.passed, report.summary()
-# tangent check: agrees with central differences
-#   ok   ddsdde: 2.167e-10 (tol 1e-05, worst at [0][1])
+```{literalinclude} ../../src/returnmap/models/yu_kinematic/model.py
+:language: python
+:start-at: '@hand_block("theta", "stress")'
+:end-at: "return - 2 / 3 * C_k * a * dlambda * np.eye(3)"
+:dedent: 4
 ```
 
-   引数は `stress_update(strain_inc, stress_n, state_n)` と同じ順。必要なのは `stress_update` だけなので、手書きの接線 (`PythonAnalyticalIntegrator`) にも Fortran UMAT (`FortranIntegrator`) にも使える。`report.rel_err_matrix` でどの成分がずれているかを見られる。
+| 項目 | 内容 |
+|---|---|
+| 引数 | 名前で渡される: `state` (評価点の状態)、`dlambda`、`state_n`、`inc`。Fortran の引数リストに合わせた手書きのまま宣言できる |
+| 戻り値 | そのブロックの配列 |
 
-4. **手書きの解の検査** — 手書きのリターンマッピング (`user_defined_return_mapping`: 閉形式解や、自前の残差で回す手書き NR) が返した解を、自動微分側の残差に代入する:
+### 近似の宣言
 
-```python
-results = StrainDriver(PythonAnalyticalIntegrator(model)).run(load).step_results
-report = check_solution(model, results)
-assert report.passed, report.summary()
-# solution check: 57 plastic steps — 1 row off
-#   ok   [stress]: 3.100e-13 (tol 1e-08, worst at point 12)
-#   ok   [dlambda]: 8.000e-14 (tol 1e-08, worst at point 12)
-#   FAIL [theta]: 2.400e-02 (tol 1e-08, worst at point 31)
-#   ok   [beta]: 1.200e-13 (tol 1e-08, worst at point 30)
-#   ok   R (explicit state): 0.000e+00 (tol 1e-08, worst at point 0)
+意図した近似は、モデル上で宣言する。テストの許容値は変更しない (理由が残らないためである)。
+
+| 宣言 | 意味 | 用途 |
+|---|---|---|
+| `approx=2e-2` | 全ステップで、自動微分との差をこの値まで許容する | 導出から省いた項が、どのステップにもある場合 |
+| `approx_when="メソッド名"` | そのメソッドが真を返すステップのみを近似とする。他のステップは厳密な許容値で判定する | 切り替えを定数として微分している場合 (切り替わるステップのみ一致しない) |
+| `approx_when` と `approx=` の併用 | 条件に該当するステップを、比較から除かず、その値で判定する | — |
+| `note=` | 理由。どちらの宣言でも必須である | — |
+
+`YUKinematicPS` は、停留曲面のゲートが切り替わるステップを近似として宣言している。条件のメソッドは、ブロックと同じく引数を名前で受け取り、真偽を返す。
+
+```{literalinclude} ../../src/returnmap/models/yu_kinematic/model.py
+:language: python
+:start-at: "_GATE_NOTE = ("
+:end-at: ")"
 ```
 
-   手書きの残差の行が自動微分側と食い違っていると、その行だけが 0 にならないので、**どの行が原因かが分かる**。各ステップを個別に判定するので、誤差の累積に左右されない。比べるのは根だけなので、行のスケールを変えた正しい書き換えは合格する。残差ベクトルを持たない閉形式解にも使える。explicit 状態は、報告された値を `update_state` の結果と比べる。履歴中に一度も動かなかった状態は `not exercised` として一覧に出る (その更新式は検査されていない)。
-
-   誤差は「行を構成する項の大きさ」に対する相対値で、ソルバ自身が報告した残差ノルムの 10 倍までは許容する (ソルバが止まった許容値を誤りとは判定しない。反復していない閉形式解には許容幅を与えない)。
-
-   検査の対象は「解」だけである。収束しなかったステップの結果を渡すと `ValueError` になる。`SubSteppingIntegrator` が増分を分割したステップ (`n_substeps > 1`) は、分割前の増分の残差の根ではないので対象から外し、`left out: N sub-stepped steps` として数だけ報告する。
-
-5. **実装同士のクロスチェック** — 閉形式 vs NR、または Python vs Fortran を、同じ載荷履歴で別々に進めてステップごとに比べる:
-
-```python
-from returnmap.verification import crosscheck, generate_strain_history
-
-load = FieldHistory(FieldType.STRAIN, generate_strain_history(model))
-report = crosscheck(PythonNumericalIntegrator(model), PythonAnalyticalIntegrator(model), load)
-assert report.passed, report.summary()
-# crosscheck: 35 steps — all agree
-#   ok   stress: 1.492e-16 (tol 1e-06)
-#   ok   state[ep]: 3.837e-16 (tol 1e-06)
-#   ok   tangent: 4.036e-16 (tol 1e-05)
+```{literalinclude} ../../src/returnmap/models/yu_kinematic/model.py
+:language: python
+:start-at: '@hand_block("theta", "beta",'
+:end-at: "return 2 / 3 * C_k * a * dlambda * np.eye(3)"
+:dedent: 4
 ```
 
-   driver は載荷履歴から決まる (ひずみ履歴 → `StrainDriver`、応力履歴 → `StressDriver`)。それ以外は `driver_factory` で渡す — 3D モデルの単軸応力なら `driver_factory=lambda i: MixedDriver(i, prescribed_strain_idx=[0])`。driver 自身の設定 (外側 NR の許容値など) も factory が持つ。食い違ったときは `report.first_failure` が最初のステップで、両方の生の結果 (`.result_a` / `.result_b`) を持つ。`compare_jacobians(model, step.result_a, step.result_b)` に渡すと、2 つの解でのヤコビアンをブロックごとに比べられる。
-
-   2 つの経路は独立に進むので、最初の食い違いの後はすべてのステップがずれる。手書きの解のどの行が原因かを知りたいときは 4 の `check_solution` を使う。
-
-6. **Fortran との対応の検査** — `verified_against_fortran` で Fortran のサブルーチンに対応づけたメソッドを、同じ引数で両側から呼んで比べる:
-
-```python
-from returnmap.verification import check_bindings
-
-report = check_bindings(model, FortranModule("j2_isotropic_3d"), {
-    "elastic_stiffness": ((model.initial_state(),), (model.E, model.nu)),
-})
-assert report.passed, report.summary()
-# bindings: 1 checked — all agree
-#   ok   elastic_stiffness ↔ j2_isotropic_3d_elastic_stiffness: 0.000e+00 (tol 1e-10)
+```{literalinclude} ../../src/returnmap/models/yu_kinematic/model.py
+:language: python
+:pyobject: YUKinematic.stagnation_gate_in_transition
+:dedent: 4
 ```
 
-   対応づけたのに `cases` に入れなかったメソッドは `not checked` として一覧に出る。
+手書きの接線 (`user_defined_tangent`) の近似は、`@hand_tangent` で同様に宣言する。
 
-通しの実例: `examples/model_family/` ([新しいモデルを足す](adding-a-model.md))
+```{literalinclude} ../../src/returnmap/models/yu_kinematic/model.py
+:language: python
+:start-at: '@hand_tangent(approx_when="stagnation_gate_in_transition", note=_GATE_NOTE)'
+:end-at: "return self.calc_ddsdde("
+:dedent: 4
+```
+
+接線の宣言を参照するのは `check_model` である。`check_tangent` と `crosscheck` は、integrator を受け取るためモデルの宣言を参照せず、渡された許容値で判定する。
+
+### 照合
+
+`check_hand_blocks` は、宣言済みのブロックを、履歴全体で自動微分と照合する。
+
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 3. 手導出ブロックの照合"
+:end-before: "# %%"
+```
+
+出力の抜粋を示す (全 16 行のうち 3 行)。
+
+```none
+hand blocks: 16/16 derived, checked at 21 plastic steps — all within tolerance
+  ok   [theta][beta] calc_ft_fb: 2.042e-17 (tol 1e-08, worst at point 1)  (approx at 3 of 21 points, 1.0e+00 there: the stagnation gate is differentiated as a constant; exact while it is 0 or 1, not on the step where it switches)
+  ok   [dlambda][dlambda] calc_fy_fl: 0.000e+00 (tol 1e-08, worst at point 1)
+```
+
+| 項目 | 内容 |
+|---|---|
+| 集計 | 最大の誤差をブロックごとに集計する。1 つの誤りが他のブロックに隠れない |
+| ブロックの誤差 | 履歴全体での最大差を、そのブロックの履歴全体での最大値で割った値。符号の誤りは 2、0 として省いたブロックは 1 になる |
+| `approx_when` のステップ | 比較から除き、数を報告する (上の例では 21 ステップ中 3 ステップ) |
+| 未導出のブロック | `not derived` として一覧に出る |
+| 履歴 | 直ひずみとせん断を同時に動かすものを用いる。外積の転置や、せん断の ×2 の取り違えは、単軸や純せん断では検出できない |
+
+`hand_jacobian(model, result)` (`returnmap.simulation`) は、宣言済みのブロックを手導出、残りを自動微分で埋めた行列を返す。
+
+## 4. 接線の差分検査
+
+`check_tangent` は、整合接線を、応力更新の中心差分と比較する。
+
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 4. 接線の差分検査"
+:end-before: "# %%"
+```
+
+```none
+tangent check: agrees with central differences
+  ok   ddsdde: 8.525e-11 (tol 1e-05, worst at [0][1])
+(6, 6)
+```
+
+| 項目 | 内容 |
+|---|---|
+| 引数 | `stress_update(strain_inc, stress_n, state_n)` と同じ順である |
+| 対象 | `stress_update` を持つ integrator。手書きの接線 (`PythonAnalyticalIntegrator`) と UMAT (`FortranIntegrator`) にも用いられる |
+| `report.rel_err_matrix` | 成分ごとの誤差 |
+
+## 5. 手書きの解の検査
+
+`check_solution` は、手書きのリターンマッピング (`user_defined_return_mapping`) が返した解を、自動微分側の残差に代入する。
+
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 5. 手書きの解の検査"
+:end-before: "# %%"
+```
+
+```none
+solution check: 21 plastic steps — every row satisfied
+  ok   [stress]: 9.404e-17 (tol 1e-08, worst at point 22)
+  ok   [dlambda]: 1.712e-16 (tol 1e-08, worst at point 20)
+  ok   [theta]: 1.444e-13 (tol 1e-08, worst at point 16)
+  ok   [beta]: 8.023e-17 (tol 1e-08, worst at point 16)
+  ok   R (explicit state): 0.000e+00 (tol 1e-08, worst at point 1)
+  ok   q (explicit state): 0.000e+00 (tol 1e-08, worst at point 1)
+  ok   r (explicit state): 0.000e+00 (tol 1e-08, worst at point 1)
+  ok   eps_eq (explicit state): 0.000e+00 (tol 1e-08, worst at point 1)
+  ok   theta_max (explicit state): 0.000e+00 (tol 1e-08, worst at point 1)
+```
+
+| 項目 | 内容 |
+|---|---|
+| 判定の単位 | 残差の行ごと。手書きの残差の行が自動微分側と異なる場合、その行のみが 0 にならず、原因の行を特定できる |
+| ステップの扱い | 各ステップを個別に判定する。誤差の累積の影響を受けない |
+| 比較の対象 | 根のみ。行のスケールを変えた正しい書き換えは合格する。残差ベクトルを持たない閉形式の解にも用いられる |
+| explicit の状態 | 報告された値を、`update_state` の結果と比較する |
+| 動かなかった状態 | 履歴中に一度も変化しなかった状態は、`not exercised` として一覧に出る (その更新式は検査されていない) |
+| 誤差の尺度 | 行を構成する項の大きさに対する相対値。ソルバが報告した残差ノルムの 10 倍までを許容する (閉形式の解には許容幅を与えない) |
+| 非収束のステップ | 渡すと `ValueError` になる。検査の対象は解のみである |
+| 分割されたステップ | `SubSteppingIntegrator` が分割したステップ (`n_substeps > 1`) は対象から除き、数を `left out` として報告する |
+
+## 6. 2 つの実装の比較
+
+`crosscheck` は、2 つの integrator を同じ載荷履歴で別々に進め、ステップごとに応力・状態・接線を比較する。用途は、自動微分と手書きの経路の比較、Python のモデルと UMAT の比較である。
+
+```{literalinclude} ../../examples/example_checks.py
+:language: python
+:start-after: "# %% 6. 2 つの実装の比較"
+```
+
+```none
+crosscheck: 35 steps — all agree
+  ok   stress: 1.492e-16 (tol 1e-06)
+  ok   state[ep]: 3.837e-16 (tol 1e-06)
+  ok   tangent: 4.036e-16 (tol 1e-05)
+```
+
+```text
+None
+```
+
+| 項目 | 内容 |
+|---|---|
+| driver | 載荷履歴から決まる。ひずみ履歴は `StrainDriver`、応力履歴は `StressDriver` である |
+| `driver_factory` | 上記以外の driver を用いる場合に渡す。3D のモデルの単軸応力は `driver_factory=lambda i: MixedDriver(i, prescribed_strain_idx=[0])`。driver の設定 (外側の反復の許容値など) も、この関数が持つ |
+| `report.first_failure` | 一致しなかった最初のステップ。2 つの結果 (`result_a`、`result_b`) を持つ。全ステップが一致した場合は `None` |
+| `compare_jacobians(model, result_a, result_b)` | 2 つの解における残差のヤコビアンを、ブロックごとに比較する |
+
+2 つの経路は独立に進むため、最初の不一致より後のステップは、すべて不一致になる。不一致の調べ方は [UMAT を確かめる](model-umat.md) の 6 節にある。手書きの解のどの行が原因かを特定する場合は、5 節の `check_solution` を用いる。
+
+## 7. Fortran との対応の検査
+
+`check_bindings` は、`verified_against_fortran` で Fortran のサブルーチンに対応づけたメソッドを、同じ引数で両側から呼び、戻り値を比較する。
+
+| 引数 | 内容 |
+|---|---|
+| `model` | 対応づけを持つモデル |
+| `fortran` | コンパイルしたモジュール (`FortranModule(モジュール名)`) |
+| `cases` | メソッド名 → (Python 側の引数の組, Fortran 側の引数の組)。例: `{"elastic_stiffness": ((model.initial_state(),), (model.E, model.nu))}` |
+| `tol` | 許容値。既定は `1e-10` |
+
+対応づけたメソッドのうち、`cases` に含めなかったものは、`not checked` として一覧に出る。入力を手で用意する必要があるため、この検査は `check_model` に含まれない。
+
+## 関連ページ
+
+- 段階ごとの手順: [新しいモデルを足す](adding-a-model.md)
+- フックの仕様: [モデルのフック](writing-models.md)
+- 非収束の扱い: [概念](../concepts.md)

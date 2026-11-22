@@ -26,7 +26,7 @@ uv run pytest src/returnmap/models/yu_kinematic -m "not fortran"    # 1 ファ�
 | `tests/test_model.py` | モデルの関数ごとの確認 (integrator を使わない) |
 | `tests/test_<確かめること>.py` | そのモデルに固有の確認 |
 
-「このモデルは検証されているか」は `test_verification.py` を見れば分かる。何が検査されるかは、モデルが宣言しているものから決まる ([検証ワークフロー](guide/verification.md) の `check_model`)。共通の検査は 1 モデルあたり 0.1〜4 秒で、`make test` に入る (YU の 3D と平面応力は 5〜10 秒かかるので `slow`)。
+「このモデルは検証されているか」は `test_verification.py` を見れば分かる。何が検査されるかは、モデルが宣言しているものから決まる ([検査の一覧](guide/verification.md) の 1 節)。共通の検査は 1 モデルあたり 0.1〜4 秒で、`make test` に入る (YU の 3D と平面応力は 5〜10 秒かかるので `slow`)。
 
 2 つの独立した実装を比べるテスト (手書きの経路と自動微分、Python と UMAT) は、次の名前と基準値に揃える。外れるものは、そのモジュールの docstring に理由を書く。
 
@@ -45,6 +45,7 @@ uv run pytest src/returnmap/models/yu_kinematic -m "not fortran"    # 1 ファ�
 
 | スクリプト | 内容 |
 |-----------|------|
+| `examples/example_checks.py` | [検査の一覧](guide/verification.md) のコード: 検査を 1 つずつ呼び出す |
 | `examples/example_response.py` | [応答を計算する](guide/simulation.md) のコード: モデル、載荷履歴、結果、応力制御と混合制御、非収束時の扱い |
 | `examples/example_j2_damage.py` | J2 + Lemaitre 損傷: 損傷の進展と剛性低下 |
 | `examples/example_j2_damage_crack_closure.py` | crack closure 係数 h による引張/圧縮の違い |

@@ -192,5 +192,5 @@ restart (default)    9/9        9          12.67         1   31.152  yes
 ## 関連ページ
 
 - 試験データに対するパラメータの同定: [試験データに合わせる](tutorial.md)
-- 2 つの実装の一致の検査: [検証ワークフロー](verification.md)
+- 2 つの実装の一致の検査: [検査の一覧](verification.md)
 - 非収束の仕組み: [概念](../concepts.md)

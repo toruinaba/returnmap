@@ -74,4 +74,4 @@ model = J2IsotropicDamageUnilateral3D(
 )
 ```
 
-`Unilateral` は Lemaitre の準片側補エネルギー ψ*(σ, D) を唯一の定義とし、ε_e = ∂ψ*/∂σ・Y = ∂ψ*/∂D を autodiff で導く (弾性接線は対称)。注意: 臨界損傷 D_c・要素削除は無く D → 1 で特異になる。主値 0 での規約 ([モデルを作る](writing-models.md) の「非線形な弾性」) は暫定値。挙動の図は `examples/example_j2_damage*.py`。
+`Unilateral` は Lemaitre の準片側補エネルギー ψ*(σ, D) を唯一の定義とし、ε_e = ∂ψ*/∂σ・Y = ∂ψ*/∂D を autodiff で導く (弾性接線は対称)。注意: 臨界損傷 D_c・要素削除は無く D → 1 で特異になる。主値 0 での規約 ([モデルのフック](writing-models.md) の 8 節) は暫定値。挙動の図は `examples/example_j2_damage*.py`。

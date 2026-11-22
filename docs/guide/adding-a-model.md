@@ -107,5 +107,5 @@ addopts = "--strict-markers --import-mode=importlib"
 
 ## 関連ページ
 
-- モデルに書けるフックの一覧: [モデルを作る](writing-models.md)
-- 各検査の測定内容: [検証ワークフロー](verification.md)
+- モデルに書けるフックの一覧: [モデルのフック](writing-models.md)
+- 各検査の測定内容: [検査の一覧](verification.md)
