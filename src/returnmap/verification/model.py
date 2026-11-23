@@ -428,10 +428,34 @@ def _only_the_declared_tangent_is_off(
     return declared.approx is None or step.tangent_rel_err <= declared.approx
 
 
+#: Tolerance of a UMAT against the hand-written return mapping it is a port
+#: of.  The two are the same algebra in two languages and agree to round-off
+#: (1e-13 or better in every UMAT shipped or built so far), so there is no
+#: reason to grant six digits: a constant typed in single precision in the
+#: Fortran source moves the result by 1e-7, and has to show.
+_PORT_TOL = 1e-10
+
+
+def _umat_tol(model: MaterialModel, stress_tol: float) -> float:
+    """Tolerance of the UMAT against ``PythonIntegrator(model)``.
+
+    A model with a hand-written return mapping is compared with that, and
+    the UMAT is its port: :data:`_PORT_TOL`.  A model solved by autodiff
+    alone is compared with a different solver of the same equations, which
+    agrees only as far as the two iterations were carried: ``stress_tol``.
+    """
+    hand_rm = (
+        type(model).user_defined_return_mapping
+        is not MaterialModel.user_defined_return_mapping
+    )
+    return min(_PORT_TOL, stress_tol) if hand_rm else stress_tol
+
+
 def _check_umat(
     model: MaterialModel, histories: Mapping[str, FieldHistory], stress_tol: float,
 ) -> ModelCheck:
     """The model's UMAT against the Python model, over the same histories."""
+    stress_tol = _umat_tol(model, stress_tol)
     umat = umat_of(model)
     package = type(model).__module__.rpartition(".")[0]
     if umat is None:
@@ -562,10 +586,12 @@ def check_model(
         Tolerance of a hand-written solution in the framework residual.
     stress_tol : float, default 1e-6
         Tolerance of the hand-written trajectory against the autodiff one,
-        and of the UMAT against the Python model, for stress and state
-        variables; the tangents are compared at ten times this.  The ABAQUS
-        entry is held to 1e-12 against the UMAT's core whatever this is: it
-        only passes the core's numbers on.
+        for stress and state variables; the tangents are compared at ten
+        times this.  A UMAT is held to it too when the model is solved by
+        autodiff alone.  The UMAT of a model with a hand-written return
+        mapping is a port of that algebra and is held to 1e-10 (tangent
+        1e-9) instead; its ABAQUS entry, which only passes the core's
+        numbers on, to 1e-12 against the core.
     n_tangent_points : int, default 4
         Plastic steps per history at which a tangent is differenced.  Each
         costs ``2 * ntens`` stress updates.

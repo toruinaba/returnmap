@@ -99,7 +99,7 @@ from returnmap.verification.crosscheck import crosscheck
 from returnmap.verification.jacobian import check_hand_blocks
 from returnmap.verification.model import (
     _ENTRY_TOL, ModelReport, _check_tangents, _family_declaration, _hand_tangent_tol,
-    _model_histories, _only_the_declared_tangent_is_off, _worst, check_model,
+    _model_histories, _only_the_declared_tangent_is_off, _umat_tol, _worst, check_model,
 )
 from returnmap.verification.solution import check_solution
 from returnmap.verification.umat import umat_of
@@ -496,9 +496,10 @@ def _check_loading(
         parts.append("UMAT not built")
     elif umat is not None:
         fortran = umat.integrator(model, raise_on_nonconverged=False)
+        umat_tol = _umat_tol(model, stress_tol)
         report = crosscheck(
             reference, fortran, solved, lockstep=True,
-            stress_tol=stress_tol, state_tol=stress_tol, tangent_tol=10.0 * stress_tol,
+            stress_tol=umat_tol, state_tol=umat_tol, tangent_tol=10.0 * umat_tol,
         )
         errors = [report.max_stress_rel_err, *report.max_state_rel_err.values()]
         if report.max_tangent_rel_err is not None:

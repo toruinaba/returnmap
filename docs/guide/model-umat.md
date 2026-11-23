@@ -82,13 +82,13 @@ uv run returnmap build --abaqus-stubs src/mymodels/voce/fortran/voce_3d.f90 --na
 ビルドした環境では、`check_model` の報告の `UMAT` と `UMAT entry` の行が実行される。
 
 ```none
-  ok   UMAT                      stress 2.7e-16, state 5.2e-16 (tol 1e-06), tangent 4.0e-16 (tol 1e-05) over 2 histories (voce_3d)
+  ok   UMAT                      stress 2.7e-16, state 5.2e-16 (tol 1e-10), tangent 4.0e-16 (tol 1e-09) over 2 histories (voce_3d)
   ok   UMAT entry                0.0e+00 (tol 1e-12) against voce_3d over 2 histories (voce_3d.umat)
 ```
 
 | 行 | 比較するもの | 方法 |
 |---|---|---|
-| `UMAT` | 中核のサブルーチンと、Python のモデル | 標準の載荷履歴を、それぞれ独立に進める。全ステップで応力・状態・接線を比較する |
+| `UMAT` | 中核のサブルーチンと、Python のモデル | 標準の載荷履歴を、それぞれ独立に進める。全ステップで応力・状態・接線を比較する。手書きの解法を持つモデルでは、許容値は応力と状態が `1e-10`、接線が `1e-9` である (UMAT は手書きの解法の移植であり、丸め誤差の範囲で一致する)。自動微分のみで解くモデルでは、`check_model` の `stress_tol` (既定 `1e-6`) と、その 10 倍である |
 | `UMAT entry` | 入口 (`umat`) と、中核のサブルーチン | 中核が進めた各ステップの開始時の応力・状態と、同じひずみ増分を、入口に ABAQUS の引数の形で与える。`PROPS` はパラメータ、`STATEV` は状態変数である。許容値は `1e-12` で、`check_model` の引数では変わらない (入口は中核の値を受け渡すのみである) |
 
 入口の検査は、次の条件を前提とする。

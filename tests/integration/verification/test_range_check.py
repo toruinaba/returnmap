@@ -394,6 +394,15 @@ class TestUmatUnderRandomLoading:
         assert [c.status for c in report.cases] == ["failed"] * 3
         assert all(case.detail.startswith("UMAT failed") for case in report.cases)
 
+    def test_a_port_is_held_to_round_off_under_random_loading_too(self, monkeypatch):
+        self.declare(monkeypatch, _StandIn(
+            lambda model: model.with_params(sigma_y0=model.sigma_y0 * (1.0 + 1e-8))))
+        report = check_range(J2Isotropic3D.at_defaults(), variants={})
+        for name in ("random", "random large"):
+            case = report[name]
+            assert case.status == "failed", report.summary()
+            assert 1e-10 < case.reports["UMAT"].max_stress_rel_err < 1e-6    # passed before
+
     def test_a_port_that_converges_where_the_model_gives_up_fails(self, monkeypatch):
         sound = J2Isotropic3D.at_defaults()
         self.declare(monkeypatch, _StandIn(lambda model: sound))
