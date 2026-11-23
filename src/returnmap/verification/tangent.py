@@ -46,12 +46,18 @@ class TangentReport:
         Largest entry of the elastic tangent at the start of the step — what
         a vanishing tangent is measured against (see :attr:`max_rel_err`).
         ``None`` if the integrator could not give one.
+    resolution : float or None
+        The round-off the central differences carry, as a tangent: twice
+        machine epsilon of the largest differenced stress, over the strain
+        step.  A difference smaller than this cannot be told from round-off
+        (see :attr:`max_rel_err`).  ``None`` for a report built without it.
     """
 
     ddsdde: Stiffness
     ddsdde_fd: Stiffness
     tol: float
     elastic_scale: float | None = None
+    resolution: float | None = None
 
     @property
     def _scale(self) -> float:
@@ -59,17 +65,30 @@ class TangentReport:
         own = max_abs(self.ddsdde_fd)
         if self.elastic_scale is not None and own < ZERO_TANGENT * self.elastic_scale:
             return self.elastic_scale
+        if self.resolution is not None and self.tol > 0.0:
+            # Below resolution / tol the reference is not known to within tol:
+            # the check is then whether the difference is within the round-off.
+            return max(own, self.resolution / self.tol)
         return own
 
     @property
     def max_rel_err(self) -> float:
         """``max|ddsdde − ddsdde_fd| / max|ddsdde_fd|``.
 
-        One case has no ``max|ddsdde_fd|`` to be relative to: a tangent that
-        is zero (a yield plateau).  Central differences return noise there,
-        and noise against noise is a 100 % error.  A reference tangent eight
-        orders below the elastic stiffness is taken to be that case, and the
-        difference is measured against the elastic stiffness instead.
+        Two cases have no ``max|ddsdde_fd|`` to be relative to.
+
+        A tangent that is zero (a yield plateau): central differences return
+        noise there, and noise against noise is a 100 % error.  A reference
+        tangent eight orders below the elastic stiffness is taken to be that
+        case, and the difference is measured against the elastic stiffness
+        instead.
+
+        A tangent that is small but not zero (hardening that has all but
+        saturated): the differences carry round-off of a fixed size
+        (``resolution``), and for a tangent smaller than ``resolution / tol``
+        that round-off alone exceeds the tolerance.  The difference is then
+        measured against ``resolution / tol`` — it passes when it is within
+        the round-off of the reference, which is all the reference can say.
         """
         with np.errstate(invalid="ignore"):
             diff = max_abs(
@@ -172,19 +191,28 @@ def check_tangent(
 
     ddsdde = np.array(integrator.stress_update(strain_inc, stress_n, state_n).ddsdde)
     ddsdde_fd = np.zeros((ntens, ntens))
+    largest_stress = 0.0
     for j in range(ntens):
         e_j = np.zeros(ntens)
         e_j[j] = 1.0
-        plus = integrator.stress_update(strain_inc + eps * e_j, stress_n, state_n).stress
-        minus = integrator.stress_update(strain_inc - eps * e_j, stress_n, state_n).stress
-        ddsdde_fd[:, j] = (np.array(plus) - np.array(minus)) / (2.0 * eps)
+        plus = np.array(integrator.stress_update(strain_inc + eps * e_j, stress_n, state_n).stress)
+        minus = np.array(integrator.stress_update(strain_inc - eps * e_j, stress_n, state_n).stress)
+        ddsdde_fd[:, j] = (plus - minus) / (2.0 * eps)
+        with np.errstate(invalid="ignore"):
+            largest_stress = float(np.fmax(largest_stress, np.fmax(max_abs(plus), max_abs(minus))))
+    # Each differenced stress is known to about one unit in its last place; the
+    # difference of two, over 2 eps, is known to this much.
+    resolution = 2.0 * np.finfo(float).eps * largest_stress / eps
     try:
         elastic_scale: float | None = max_abs(integrator.elastic_tangent(stress_n, state_n))
     except Exception:
         # Not every integrator can say (a UMAT without an elastic-stiffness
         # hook); the tangent is then measured against itself only.
         elastic_scale = None
-    return TangentReport(ddsdde=ddsdde, ddsdde_fd=ddsdde_fd, tol=tol, elastic_scale=elastic_scale)
+    return TangentReport(
+        ddsdde=ddsdde, ddsdde_fd=ddsdde_fd, tol=tol,
+        elastic_scale=elastic_scale, resolution=resolution,
+    )
 
 
 __all__ = ["TangentReport", "check_tangent"]

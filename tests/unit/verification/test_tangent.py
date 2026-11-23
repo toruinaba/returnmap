@@ -149,3 +149,48 @@ def test_a_wrong_tangent_on_a_plateau_still_fails():
     assert report.max_rel_err == pytest.approx(1.0)
     assert not report.passed
 
+
+# ---------------------------------------------------------------------------
+# A tangent smaller than what the differences resolve
+# ---------------------------------------------------------------------------
+
+class TestSmallTangent:
+    """Hardening that has all but saturated: the tangent is a few 1e-8 of the
+    elastic stiffness, and the round-off of the differences is a few 1e-5 of
+    *it*.  The numbers are those of a 1D Voce model after a large increment."""
+
+    E = 210_000.0
+    RESOLUTION = 1.8e-6          # 2 · 2.2e-16 · 400 MPa / 1e-7
+
+    def report(self, tangent, difference, **kwargs):
+        return TangentReport(
+            ddsdde=np.array([[tangent]]), ddsdde_fd=np.array([[tangent + difference]]),
+            tol=1e-5, elastic_scale=self.E, **kwargs)
+
+    def test_round_off_of_the_differences_is_not_an_error(self):
+        report = self.report(8.234e-3, 3.1e-7, resolution=self.RESOLUTION)
+        assert report.passed, report.summary()
+        assert report.max_rel_err == pytest.approx(3.1e-7 / (self.RESOLUTION / 1e-5))
+
+    def test_without_the_resolution_the_same_report_fails(self):
+        """What the check did before it knew how far the differences resolve."""
+        assert not self.report(8.234e-3, 3.1e-7).passed
+
+    def test_a_difference_beyond_the_round_off_still_fails(self):
+        report = self.report(8.234e-3, 8.0e-5, resolution=self.RESOLUTION)   # 1 % off
+        assert not report.passed
+
+    def test_a_tangent_the_differences_resolve_is_measured_against_itself(self):
+        report = self.report(12.29, 5.1e-7, resolution=self.RESOLUTION)
+        assert report.max_rel_err == pytest.approx(5.1e-7 / 12.29, rel=1e-6)
+
+    def test_a_vanishing_tangent_is_still_measured_against_the_elastic_stiffness(self):
+        report = self.report(0.0, 2.0e-7, resolution=self.RESOLUTION)
+        assert report.max_rel_err == pytest.approx(2.0e-7 / self.E)
+
+    def test_check_tangent_reports_the_resolution_of_its_differences(self):
+        report = check_tangent(_Linear(C), DEPS, STRESS_N, STATE_N)
+        largest = np.abs(STRESS_N + C @ (DEPS + 1e-7 * np.eye(3)[0])).max()
+        assert report.resolution == pytest.approx(
+            2.0 * np.finfo(float).eps * largest / 1e-7, rel=1e-3)
+        assert report.passed
