@@ -44,6 +44,8 @@ UMAT を、ファミリの `verification.py` の `UMATS` に宣言する。ビ�
 | `subroutine` | 1 ステップの更新を行うサブルーチンの名前。省略時は `module` と同じ名前 |
 | `props` | UMAT が受け取るパラメータの名前と順序。`param_names` と順序が異なる場合、または一部のみを受け取る場合に指定する |
 | `integrator_options` | `FortranIntegrator.from_model` に渡す追加の引数。主な用途は `parse_umat_failure` である |
+| `entry` | ABAQUS が呼ぶ入口のサブルーチンの名前。既定は `umat`。入口を持たないモジュール、または検査しない場合は `None` |
+| `statev` | 入口が `STATEV` に状態変数を並べる順序。テンソルは成分の数だけ場所を占める。省略時は宣言の順 (応力を除く) |
 
 **UMAT が収束フラグを返す場合は、`parse_umat_failure` で読ませる。** 指定しない場合、UMAT が収束しなかったステップの値が、解として比較される。`parse_umat_failure` はサブルーチンの戻り値の組を受け取り、失敗の説明 (文字列) か、成功を表す `None` を返す。
 
@@ -74,13 +76,29 @@ uv run returnmap build --abaqus-stubs src/mymodels/voce/fortran/voce_3d.f90 --na
 
 ## 4. 検査の報告
 
-ビルドした環境では、`check_model` の報告の `UMAT` の行が実行される。標準の載荷履歴の全ステップで、応力・状態・接線を Python のモデルと比較する。
+ビルドした環境では、`check_model` の報告の `UMAT` と `UMAT entry` の行が実行される。
 
 ```none
   ok   UMAT                      stress 2.7e-16, state 5.2e-16 (tol 1e-06), tangent 4.0e-16 (tol 1e-05) over 2 histories (voce_3d)
+  ok   UMAT entry                0.0e+00 (tol 1e-06) against voce_3d over 2 histories (voce_3d.umat)
 ```
 
-ビルドしていない環境では、この行は `—` (`not built`) になり、不合格には数えない。gfortran の無い環境でも共通の検査が通るようにするためである。UMAT の検査を必ず実行する場所では、`fortran` マーカーのテストで行の状態を確認する。
+| 行 | 比較するもの | 方法 |
+|---|---|---|
+| `UMAT` | 中核のサブルーチンと、Python のモデル | 標準の載荷履歴を、それぞれ独立に進める。全ステップで応力・状態・接線を比較する |
+| `UMAT entry` | 入口 (`umat`) と、中核のサブルーチン | 中核が進めた各ステップの開始時の応力・状態と、同じひずみ増分を、入口に ABAQUS の引数の形で与える。`PROPS` はパラメータ、`STATEV` は状態変数である |
+
+入口の検査は、次の条件を前提とする。
+
+| 項目 | 内容 |
+|---|---|
+| 引数の宣言 | 1 節の例と同じ `intent` で宣言する: `STRESS`・`STATEV`・`PNEWDT` は `intent(inout)`、`DDSDDE` とエネルギーの出力は `intent(out)`、ほかは `intent(in)` |
+| 非収束の報告 | `PNEWDT` を 1 未満にする。このとき、`STRESS` と `STATEV` を変更しない |
+| 入口に与えない量 | 全ひずみ (0)、時刻、温度、変形勾配 (単位行列)。これらを読む UMAT は、この検査の対象外である |
+| `STATEV` の内容 | モデルの状態変数のみ。それ以外の場所を持つ UMAT は `entry=None` と宣言し、入口を個別に検査する |
+| 入口を持たないモジュール | `entry=None` と宣言する。宣言しない場合、ビルドしたモジュールに `umat` が無いと、この行は不合格になる |
+
+ビルドしていない環境では、2 つの行は `—` (`not built`) になり、不合格には数えない。gfortran の無い環境でも共通の検査が通るようにするためである。UMAT の検査を必ず実行する場所では、`fortran` マーカーのテストで行の状態を確認する。
 
 ```{literalinclude} ../../examples/model_family/src/mymodels/voce/tests/test_verification.py
 :language: python

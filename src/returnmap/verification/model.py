@@ -16,7 +16,9 @@ mapping                     (:func:`check_solution`), its trajectory agrees
                             its tangent agrees with central differences
 a UMAT declared and built   the compiled UMAT agrees with the Python model
                             step by step over the same histories
-                            (:func:`crosscheck`)
+                            (:func:`crosscheck`); and the subroutine ABAQUS
+                            calls, which unpacks ``PROPS`` and ``STATEV``,
+                            agrees with the one it wraps
 ==========================  ===================================================
 
 A model that is only a Python model — a yield function and evolution laws,
@@ -409,6 +411,56 @@ def _check_umat(
     )
 
 
+def _check_umat_entry(
+    model: MaterialModel, histories: Mapping[str, FieldHistory], stress_tol: float,
+) -> ModelCheck:
+    """The ABAQUS entry of the model's UMAT against the subroutine it wraps."""
+    name = "UMAT entry"
+    umat = umat_of(model)
+    if umat is None:
+        return ModelCheck(name, "not declared", f"no UMAT declared for {type(model).__name__}")
+    if umat.entry is None:
+        return ModelCheck(name, "not declared", f"no ABAQUS entry declared for {umat.module}")
+    if not umat.is_built():
+        return ModelCheck(name, "not built", f"module {umat.module} is not built")
+    core_name = umat.subroutine or umat.module
+    if not umat.has_entry():
+        return ModelCheck(
+            name, "failed",
+            f"module {umat.module} has no subroutine {umat.entry!r} — "
+            "declare Umat(..., entry=None) for a module without an ABAQUS entry",
+        )
+    core = umat.integrator(model, raise_on_nonconverged=False)
+    entry = umat.entry_integrator(model, raise_on_nonconverged=False)
+    try:
+        # From the same state, with the same increment: the entry only unpacks
+        # PROPS and STATEV for the core, so each step is a separate question.
+        reports = {
+            key: crosscheck(
+                core, entry, load, lockstep=True,
+                stress_tol=stress_tol, state_tol=stress_tol, tangent_tol=10.0 * stress_tol,
+            )
+            for key, load in histories.items()
+        }
+    except Exception as exc:        # the f2py wrapper refused the argument list
+        return ModelCheck(
+            name, "failed",
+            f"{umat.module}.{umat.entry} could not be called with the ABAQUS argument "
+            f"list ({type(exc).__name__}: {exc}) — its arguments have to be declared "
+            "as in the shipped UMATs",
+        )
+    errors = [r.max_stress_rel_err for r in reports.values()]
+    errors += [e for r in reports.values() for e in r.max_state_rel_err.values()]
+    errors += [r.max_tangent_rel_err for r in reports.values()
+               if r.max_tangent_rel_err is not None]
+    return ModelCheck(
+        name, "passed" if all(r.passed for r in reports.values()) else "failed",
+        f"{_worst(errors):.1e} (tol {stress_tol:.0e}) against {core_name} "
+        f"over {len(reports)} histories ({umat.module}.{umat.entry})",
+        reports,
+    )
+
+
 def check_model(
     model: MaterialModel,
     histories: Mapping[str, FieldHistory] | None = None,
@@ -462,7 +514,11 @@ def check_model(
 
     The UMAT is compared with ``PythonIntegrator(model)``: the hand-written
     return mapping when the model has one — that is what the UMAT is a port
-    of — and the autodiff one otherwise.  The individual subroutines a model
+    of — and the autodiff one otherwise.  Its ABAQUS entry is compared with
+    the UMAT's own core, step by step from the same state, so that a line of
+    the report that fails says which of the two is wrong: the algorithm, or
+    the unpacking of ``PROPS`` and ``STATEV``
+    (:class:`~returnmap.verification.Umat`).  The individual subroutines a model
     binds with ``verified_against_fortran`` need hand-written inputs and are
     checked separately (:func:`check_bindings`).
     """
@@ -560,6 +616,7 @@ def check_model(
             ModelCheck("hand-written tangent", "not declared", reason),
         ]
         checks.append(_check_umat(model, histories, stress_tol))
+        checks.append(_check_umat_entry(model, histories, stress_tol))
         return ModelReport(cls.__name__, checks, n_plastic, approximations)
 
     analytical = PythonAnalyticalIntegrator(model, raise_on_nonconverged=False)
@@ -650,4 +707,5 @@ def check_model(
             "no user_defined_tangent on the model (the tangent is the autodiff one)",
         ))
     checks.append(_check_umat(model, histories, stress_tol))
+    checks.append(_check_umat_entry(model, histories, stress_tol))
     return ModelReport(cls.__name__, checks, n_plastic, approximations)

@@ -56,6 +56,7 @@ YUKinematic1D: every check that applies passes
   —    hand-written vs autodiff  no user_defined_return_mapping on the model
   —    hand-written tangent      no user_defined_return_mapping on the model
   —    UMAT                      no UMAT declared for YUKinematic1D in returnmap.models.yu_kinematic.verification
+  —    UMAT entry                no UMAT declared for YUKinematic1D
   histories: uniaxial (24 plastic steps), reversed 2 % (33 plastic steps)
 ```
 
@@ -68,12 +69,14 @@ YUKinematic1D: every check that applies passes
 | `hand-written vs autodiff` | 手書きの経路と自動微分の経路の一致。応力・状態・接線を全ステップで比較する (`crosscheck`) | 同上 |
 | `hand-written tangent` | 手書きの接線と中心差分の一致 | `user_defined_tangent` がある |
 | `UMAT` | コンパイルした UMAT と Python のモデルの一致。同じ履歴を全ステップで比較する (`crosscheck`) | UMAT が宣言されており、ビルドしてある |
+| `UMAT entry` | ABAQUS が呼ぶ入口 (`umat`) と、それが呼ぶ中核のサブルーチンの一致。同じ状態と増分を 1 ステップずつ与える | 同上。入口が宣言されている (既定は `umat`) |
 
 | 項目 | 内容 |
 |---|---|
 | `—` の行 | 宣言していない項目。不合格には数えない。自動微分で解くだけのモデルは、上の 2 行で検査され、合格する |
 | 行の内訳 | `report["hand blocks"].reports` などから、元の検査の報告を取り出せる ([手書きの解法を照合する](model-hand-written.md) の 4 節) |
 | UMAT の比較相手 | `PythonIntegrator(model)`。手書きのリターンマッピングがあればそれ、無ければ自動微分である |
+| 入口の比較相手 | 同じ UMAT の中核である。不合格の行から、誤りが解法にあるのか、`PROPS` と `STATEV` の展開にあるのかを区別できる |
 | 未ビルドの UMAT | 行は `not built` になり、不合格には数えない ([UMAT を確かめる](model-umat.md)) |
 | 検査できないこと | 定式化が意図どおりであるか。どの行も、同じモデルの 2 つの導出を比較する。全体が共有する仮定 (単位、符号の規約、定式化) は検出できない |
 
@@ -353,6 +356,7 @@ J2Isotropic1D over its range: every case passes
 | 同じ状態から、手書きの経路と自動微分の経路がともに収束し、結果が異なる | 不合格 |
 | 接線が中心差分と一致しない | 不合格 |
 | UMAT が、同じ状態と増分に対して、Python のモデルと異なる結果を返す。または、Python のモデルが解けない増分で収束する | 不合格 |
+| ABAQUS の入口が、UMAT の中核と異なる結果を返す。または、解けなかった増分で、収束するか `STRESS`・`STATEV` を変更する | 不合格 |
 | モデル自身の経路 (手書きの解法があればそれ、無ければ自動微分) が解けない増分 | 履歴から除き、直前の解けた状態から続ける。件数を報告する |
 | 手書きの経路が解け、自動微分の経路が解けないステップ | 件数を報告する。手書きの解は残差に代入して確かめる |
 | 塑性の増分を 1 つも解けない履歴 | `—` (`not solved`)。不合格には数えない |

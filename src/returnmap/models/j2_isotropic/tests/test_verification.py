@@ -19,8 +19,9 @@ def test_passes_every_check_that_applies(model):
 @pytest.mark.fortran
 @pytest.mark.parametrize("umat", UMATS, ids=lambda umat: umat.module)
 def test_the_umat_agrees_with_the_python_model(umat):
-    """The compiled UMAT, step by step over the same histories (needs the
-    module built: ``returnmap build --family returnmap.models.j2_isotropic``)."""
+    """The compiled UMAT, step by step over the same histories, and its
+    ABAQUS entry against the subroutine it wraps (needs the module built: ``returnmap build --family returnmap.models.j2_isotropic``)."""
     pytest.importorskip(umat.module, reason=f"{umat.module} is not built")
     report = check_model(umat.model.at_defaults())
     assert report["UMAT"].status == "passed", report.summary()
+    assert report["UMAT entry"].status == "passed", report.summary()

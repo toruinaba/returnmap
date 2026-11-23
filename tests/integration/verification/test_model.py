@@ -68,6 +68,7 @@ class TestWhatApplies:
             "hand blocks": "not declared",
             **{name: "not declared" for name in HAND_WRITTEN},
             "UMAT": "not declared",
+            "UMAT entry": "not declared",
         }
 
     def test_a_hand_written_return_mapping_is_checked_three_ways(self):

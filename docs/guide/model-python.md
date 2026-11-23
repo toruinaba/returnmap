@@ -79,6 +79,7 @@ J2Voce1D: every check that applies passes
   —    hand-written vs autodiff  no user_defined_return_mapping on the model
   —    hand-written tangent      no user_defined_return_mapping on the model
   —    UMAT                      no UMAT declared for J2Voce1D in mymodels.voce.verification
+  —    UMAT entry                no UMAT declared for J2Voce1D
   histories: uniaxial (24 plastic steps)
 ```
 
