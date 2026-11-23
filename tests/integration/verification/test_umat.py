@@ -131,7 +131,8 @@ class TestDeclaration:
         package, module, _ = family
         assert [u.module for u in declared_umats(package)] == [module]
         modules = [u.module for u in declared_umats("returnmap.models")]
-        assert modules == ["j2_isotropic_3d", "yu_kinematic_3d", "yu_kinematic_ps"]
+        assert modules == [
+            "j2_isotropic_3d", "ow_kinematic_3d", "yu_kinematic_3d", "yu_kinematic_ps"]
         assert declared_umats("returnmap.models.af_kinematic") == []
 
     def test_the_reference_umats_point_at_their_sources(self):

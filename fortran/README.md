@@ -10,6 +10,7 @@ UMAT build needs are shipped inside the package.
 | File | Description |
 |------|-------------|
 | `../src/returnmap/models/j2_isotropic/fortran/j2_isotropic_3d.f90` | J2 isotropic hardening UMAT — contains `j2_isotropic_3d` (f2py interface), `umat` (ABAQUS entry point), and `j2_isotropic_3d_elastic_stiffness` (component check) |
+| `../src/returnmap/models/ow_kinematic/fortran/ow_kinematic_3d.f90` | Ohno-Wang type kinematic hardening UMAT (3D solid) — `ow_kinematic_3d` (f2py interface) and `umat` (ABAQUS entry point) |
 | `../src/returnmap/models/yu_kinematic/fortran/yu_kinematic_3d.f90`, `yu_kinematic_ps.f90` | Yoshida-Uemori UMATs (3D solid and plane stress) |
 | `../src/returnmap/fortran/abaqus_stubs.f90` | Stubs for ABAQUS internal functions (SINV, SPRINC, ROTSIG) — linked for symbol resolution. Shipped with the package: `returnmap build --abaqus-stubs` compiles it in, `returnmap stubs` prints its path |
 | `test_basic.f90` | Simple elastic subroutine for f2py smoke test |
