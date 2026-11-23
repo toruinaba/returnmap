@@ -261,6 +261,22 @@ class TestEntryRow:
         report = check_model(models_of(package).PortedJ2.at_defaults())
         assert [c.name for c in report.checks if c.status == "failed"] == ["UMAT entry"]
 
+    def test_the_entry_is_held_to_round_off_of_the_core(self, family):
+        """An entry that returns the core's stress to seven digits only."""
+        package, module, tmp_path = family
+        build(tmp_path, module)
+        with open(tmp_path / f"{module}.py", "a") as stand_in:
+            stand_in.write(
+                "\n\n_exact = umat\n\n"
+                "def umat(stress, *args):\n"
+                "    out = _exact(stress, *args)\n"
+                "    stress *= 1.0 + 1e-7\n"
+                "    return out\n")
+        report = check_model(models_of(package).PortedJ2.at_defaults())
+        check = report["UMAT entry"]
+        assert check.status == "failed"
+        assert "(tol 1e-12)" in check.detail
+
     def test_the_entry_is_compared_with_the_core_not_with_the_model(self, family):
         """A core that is wrong fails its own row; the entry that wraps it faithfully passes."""
         package, module, tmp_path = family

@@ -66,7 +66,18 @@ is one, the autodiff one otherwise) does not solve are left out, the history
 continues from the last solved state, and the report says how many there
 were.  Steps the autodiff path does not solve while the hand-written one
 does are counted the same way: the hand-written solution is still checked
-against the residual, which needs no Newton iteration to converge.
+against the residual, which needs no Newton iteration to converge.  "Does
+not solve" includes a step that raises — a singular Jacobian, an iteration
+of the model's own that gives up — so that the check reports instead of
+stopping.
+
+A history on which no plastic increment is solved has nothing to compare and
+reads "not solved".  If that is every history, nothing was checked under
+random loading at all, and the report fails.
+
+The two return mappings are compared in their tangents as well, at every
+step both solve.  The tangent is then differenced at a few steps of each
+history, as :func:`~returnmap.verification.check_model` does.
 """
 
 from __future__ import annotations
@@ -87,8 +98,8 @@ from returnmap.simulation.types import FieldHistory, FieldType
 from returnmap.verification.crosscheck import crosscheck
 from returnmap.verification.jacobian import check_hand_blocks
 from returnmap.verification.model import (
-    ModelReport, _check_tangents, _family_declaration, _model_histories, _worst,
-    check_model,
+    _ENTRY_TOL, ModelReport, _check_tangents, _family_declaration, _hand_tangent_tol,
+    _model_histories, _only_the_declared_tangent_is_off, _worst, check_model,
 )
 from returnmap.verification.solution import check_solution
 from returnmap.verification.umat import umat_of
@@ -102,7 +113,11 @@ RangeStatus = Literal["passed", "failed", "not solved"]
 # size of the standard histories, the last takes each leg in one increment.
 _RANDOM_SHAPES = (("random", 1.0, 6), ("random large", 4.0, 4), ("random single-step", 20.0, 1))
 _N_LEGS = 6
-_SOLVER_ERRORS = (np.linalg.LinAlgError, FloatingPointError, ZeroDivisionError)
+# What a step that cannot be solved raises, when it raises: a singular
+# Jacobian, an overflow, an iteration of the model's own that gives up.  A
+# programming error (TypeError, KeyError, ...) is none of these, and is not
+# to be reported as an increment that was not solved.
+_SOLVER_ERRORS = (np.linalg.LinAlgError, ArithmeticError, RuntimeError)
 
 
 @dataclass
@@ -117,8 +132,9 @@ class RangeCase:
     group : {"parameters", "loading"}
     status : {"passed", "failed", "not solved"}
         ``"not solved"`` is a loading history on which the model's own path
-        solved no plastic increment, so that nothing was compared; it does
-        not count against the model.
+        solved no plastic increment, so that nothing was compared.  One such
+        history does not count against the model; all of them do (see
+        :attr:`RangeReport.passed`).
     detail : str
         What was compared and how far apart the two sides were, or what
         failed.
@@ -160,9 +176,21 @@ class RangeReport:
     notes: list[str] = field(default_factory=list)
 
     @property
+    def nothing_compared_under_loading(self) -> bool:
+        """Loading cases were run, and the model solved none of them far enough
+        for anything to be compared."""
+        loading = [case for case in self.cases if case.group == "loading"]
+        return bool(loading) and all(case.status == "not solved" for case in loading)
+
+    @property
     def passed(self) -> bool:
-        """At least one case was run and none failed."""
-        return bool(self.cases) and all(case.passed for case in self.cases)
+        """At least one case was run, none failed, and — if random histories
+        were run — at least one of them was solved far enough to be compared."""
+        return (
+            bool(self.cases)
+            and all(case.passed for case in self.cases)
+            and not self.nothing_compared_under_loading
+        )
 
     def __getitem__(self, name: str) -> RangeCase:
         for case in self.cases:
@@ -178,6 +206,9 @@ class RangeReport:
         elif failed:
             head = (f"{self.model} over its range: {len(failed)} case(s) failed — "
                     f"{', '.join(failed)}")
+        elif self.nothing_compared_under_loading:
+            head = (f"{self.model} over its range: failed — no random history was "
+                    "solved far enough to compare anything")
         else:
             head = f"{self.model} over its range: every case passes"
         marks = {"passed": "ok  ", "failed": "FAIL", "not solved": "—   "}
@@ -395,40 +426,65 @@ def _check_loading(
         if not ok:
             failures.append(label)
 
+    hand_tangent = hand_rm and (
+        cls.user_defined_tangent is not MaterialModel.user_defined_tangent
+    )
+    declared = hand_tangent_record(cls) if hand_tangent else None
+
     if hand_rm:
         report = check_solution(model, plastic, tol=solution_tol)
         worst = _worst([row.worst_err for row in report.rows.values()])
         record("solution", report.passed, f"{worst:.1e}", report)
 
         # From the same state, with the same increment: the two return
-        # mappings.  The tangent is compared with differences below, where a
-        # declared approximation is taken into account.
+        # mappings and their tangents, at every step both of them solve.  A
+        # tangent the model declares approximate on a step is excused there,
+        # as check_model excuses it.
         numerical = _GivingUp(PythonNumericalIntegrator(model, raise_on_nonconverged=False))
         report = crosscheck(
             reference, numerical, solved, lockstep=True,
-            stress_tol=stress_tol, state_tol=stress_tol, tangent_tol=np.inf,
+            stress_tol=stress_tol, state_tol=stress_tol,
+            tangent_tol=_hand_tangent_tol(declared, stress_tol),
         )
         both = [s for s in report.steps if s.a_converged and s.b_converged]
-        wrong = [s for s in both if not s.passed]
+        excused = [
+            s for s in both
+            if not s.passed and _only_the_declared_tangent_is_off(
+                model, declared, s, s.result_a, stress_tol)
+        ]
+        wrong = [s for s in both if not s.passed and s not in excused]
         n_autodiff_unsolved = sum(not s.b_converged for s in report.steps)
         worst = _worst(
             [s.stress_rel_err for s in both]
-            + [e for s in both for e in s.state_rel_err.values()] or [0.0]
+            + [e for s in both for e in s.state_rel_err.values()]
+            + [s.tangent_rel_err for s in both
+               if s.tangent_rel_err is not None and s not in excused] or [0.0]
         )
         text = f"{worst:.1e}"
+        notes = []
         if n_autodiff_unsolved:
-            text += f" (autodiff did not solve {n_autodiff_unsolved})"
+            notes.append(f"autodiff did not solve {n_autodiff_unsolved}")
+        if excused:
+            notes.append(f"{len(excused)} tangent(s) declared approximate")
+        if notes:
+            text += f" ({', '.join(notes)})"
         record("hand-written vs autodiff", not wrong, text, report)
 
-    tangent_integrator: "StressIntegrator" = reference
-    declared = None
-    if hand_rm and cls.user_defined_tangent is not MaterialModel.user_defined_tangent:
-        tangent_integrator = PythonAnalyticalIntegrator(model, raise_on_nonconverged=False)
-        declared = hand_tangent_record(cls)
+    # The tangent against central differences.  The integrator raises on a
+    # perturbed step it cannot solve, which leaves that point out.
+    tangent_integrator = (PythonAnalyticalIntegrator if hand_tangent else PythonIntegrator)(model)
     status, detail, tangent_reports = _check_tangents(
         tangent_integrator, {name: results}, n_tangent_points, tangent_tol, model, declared,
+        unsolved=_SOLVER_ERRORS,
     )
-    record("tangent", status == "passed", detail.split(" (tol")[0], tangent_reports)
+    if status == "not solved":
+        parts.append(f"tangent not differenced ({detail})")
+    else:
+        text = detail.split(" (tol")[0]
+        extra = [note for note in detail.split("; ")[1:]]
+        if extra:
+            text += f" ({'; '.join(extra)})"
+        record("tangent", status == "passed", text, tangent_reports)
 
     if getattr(cls, "_hand_blocks", None):
         report = check_hand_blocks(model, plastic, tol=block_tol)
@@ -470,7 +526,7 @@ def _check_loading(
             entry = umat.entry_integrator(model, raise_on_nonconverged=False)
             report = crosscheck(
                 fortran, entry, solved, lockstep=True,
-                stress_tol=stress_tol, state_tol=stress_tol, tangent_tol=10.0 * stress_tol,
+                stress_tol=_ENTRY_TOL, state_tol=_ENTRY_TOL, tangent_tol=_ENTRY_TOL,
             )
             errors = [report.max_stress_rel_err, *report.max_state_rel_err.values()]
             if report.max_tangent_rel_err is not None:
@@ -494,6 +550,8 @@ def _check_loading(
             record("UMAT entry", ok, text, report)
 
     detail = f"{coverage}; " + ", ".join(parts)
+    if not reports:
+        return RangeCase(name, "loading", "not solved", f"{detail} — nothing to compare")
     if failures:
         return RangeCase(
             name, "loading", "failed", f"{', '.join(failures)} failed — {detail}", reports,
@@ -505,9 +563,13 @@ def _check_variant(name: str, variant: MaterialModel, **tolerances) -> RangeCase
     """One parameter variant through ``check_model``."""
     try:
         report: ModelReport = check_model(variant, **tolerances)
-    except ValueError as exc:
-        # No history can be built for it (no yield strain to scale by).
-        return RangeCase(name, "parameters", "failed", f"could not be checked — {exc}")
+    except (ValueError, *_SOLVER_ERRORS) as exc:
+        # No history can be built for it (no yield strain to scale by), or a
+        # step of the check itself could not be solved.
+        return RangeCase(
+            name, "parameters", "failed",
+            f"could not be checked — {type(exc).__name__}: {exc}",
+        )
     failed = [c for c in report.checks if c.status == "failed"]
     if failed:
         detail = "; ".join(f"{c.name}: {c.detail}" for c in failed)
