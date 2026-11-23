@@ -39,6 +39,7 @@ There is no linter configured. The only CI workflow builds the documentation (`.
 - **ガイドは技術文書の文体で書く。** 節の最初に範囲を 1〜2 文で述べ、コード、出力、仕様(表)の順に並べる。見出しは名詞。属性・引数・対処の選択肢は表にする。語りかける言い方(「まずこれを試す」「見れば分かる」)と、設計の理由は書かない(理由は設計メモと docstring に書く)。
 - **ページに独自の Python のブロックを置かない。** コードは `literalinclude` で、実行されるファイルから取り込む: 手順のページ(「既存のモデルを使う」「自分のモデルを UMAT にする」「組み込む」)は `examples/` のスクリプトの節(`# %%` の区切り)と `examples/model_family/`、仕様のページ(「解説」)は組み込みモデルのソース。スクリプトが表示する出力を載せ、毎回同じ出力は `text` のブロック、実行ごとに変わる数値(実行時間、フィッティングの結果、丸め誤差の大きさの値)を含む出力は `none` のブロックに書く。`tests/e2e/test_docs_examples.py` がスクリプトを実行し、`text` は 1 文字ずつ、`none` は数値を伏せて比べる(ページとスクリプトの対応は同ファイルの `PAGES`)。README のクイックスタートは `examples/example_response.py` の最初の節と同一に保つ(同じテストが確認する)。
 - **`examples/` は文書のページが取り込むコードだけを持つ。** スクリプトを足すときは、対応するページから参照する。例のコメントと docstring は日本語(ページに載るため)。`examples/model_family/` はモデルのパッケージの雛形なので英語のまま。
+- **新しいファミリの README は、仕様書の形で書く**(`docs/guide/spec-driven.md`。雛形は `examples/model_family/templates/family-README.md`、完成した例は雛形の `voce/README.md`)。完成時の文書に空欄がある状態として書き、書いてある節には従い、`(未記入)` の節は実装した者が書く。作業の指示と、誰が決めたかの印は README に書かない。「性質」は実装より先に書き、`tests/test_properties.py` が 1 つずつテストにする。「検証」の「報告」は `returnmap check --require-built --range` の出力。組み込みのファミリの README は、まだこの形に直していない(設計メモ 4.28)。
 - **図は `docs/figures/<name>.py` が `docs/guide/models/img/<name>.png` に描く。** 画像はコミットし、`make docs-figures` で描き直す。
 - **docstring の相互参照は公開パッケージのパスで書く**(`` :class:`~returnmap.core.MaterialModel` ``。`returnmap.core.material.MaterialModel` ではない)。非公開の名前は参照にせず ``` ``literal`` ``` で書く。
 

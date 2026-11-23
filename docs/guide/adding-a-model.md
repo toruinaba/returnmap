@@ -25,18 +25,26 @@
 ```text
 mymodels/                          ← リポジトリ
   pyproject.toml                   returnmap をリリースのタグに固定する
+  Makefile、Dockerfile             gfortran を持つコンテナで、ビルドと検査を実行する
+  .gitignore                       ビルド先の fortran/ のみを無視する (ソースの fortran/ は無視しない)
   report.py                        検査の報告を表示する
   umat_crosscheck.py               UMAT との比較を個別に実行する (段階 C)
+  templates/
+    family-README.md               新しいファミリの仕様書の雛形
+    brief.md                       実装を依頼する指示文の雛形
   src/mymodels/
     voce/                          ← 1 ファミリ
       __init__.py                  公開するクラス
-      README.md                    定式化 (式、状態変数、パラメータ)
+      README.md                    仕様書 (式、状態変数、パラメータ、性質、解法、UMAT、検証)
       model.py                     モデル本体
       verification.py              検証の宣言 (MODELS、UMATS)
       fortran/voce_3d.f90          UMAT のソース (段階 C まで進むモデルのみ)
       tests/test_verification.py   共通の検査を実行する
+      tests/test_properties.py     仕様書の「性質」を、1 つずつテストにしたもの
   fortran/                         コンパイルした UMAT の置き場 (ビルド時に作られる)
 ```
+
+ファミリの `README.md` は仕様書である。書き方と、実装を依頼する場合の受け渡しは [仕様書から実装する](spec-driven.md) にある。
 
 returnmap は PyPI に無いため、`pyproject.toml` でタグに固定する。
 
@@ -81,7 +89,8 @@ addopts = "--strict-markers --import-mode=importlib"
 |---|---|
 | A | `check_model` の `converges` と `tangent` が `ok` |
 | B | `hand-written solution`、`hand-written vs autodiff`、`hand-written tangent` が `ok`。近似は宣言に書いてある |
-| C | ビルドした環境で `UMAT` の行が `ok`。UMAT の収束フラグを `parse_umat_failure` で読ませている |
+| C | ビルドした環境で `UMAT` と `UMAT entry` の行が `ok`。UMAT の収束フラグを `parse_umat_failure` で読ませている |
+| 完成時 | ビルドした環境で `returnmap check --family <パッケージ> --require-built --range` を実行し、結果を仕様書の「検証」に記録する ([検査の一覧](verification.md) の 8 節) |
 
 ## 固有のテスト
 
@@ -90,6 +99,7 @@ addopts = "--strict-markers --import-mode=importlib"
 | 名前 | 内容 |
 |---|---|
 | `test_verification.py` | 共通の検査のみ。固有のテストは書かない |
+| `test_properties.py` | 仕様書の「性質」の各行。期待値は、テストの中で式から計算する |
 | `test_model.py` | モデルの関数ごとの確認 (integrator を用いない) |
 | `test_<確かめること>.py` | そのモデルに固有の確認 |
 

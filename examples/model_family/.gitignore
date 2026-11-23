@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+uv.lock
+.pytest_cache/
+.scratch/
+# Compiled UMAT modules: `returnmap build` puts them in fortran/ at the top of
+# the project.  Anchored, so that the fortran/ directories of the families —
+# the UMAT sources — are not ignored with it.
+/fortran/
