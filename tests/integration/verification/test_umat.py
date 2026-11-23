@@ -221,6 +221,38 @@ class TestCheckModel:
         assert set(check.reports) == {"uniaxial", "multiaxial"}
         assert check.detail.endswith(f"over 2 histories ({module})")
 
+    def test_a_port_is_held_to_round_off_not_to_six_digits(self, family):
+        """A constant typed in single precision moves the stress by 1e-7."""
+        package, module, tmp_path = family
+        build(tmp_path, module, scale=1.0 + 1e-7)
+        report = check_model(models_of(package).PortedJ2.at_defaults())
+        check = report["UMAT"]
+        assert check.status == "failed", report.summary()
+        assert "(tol 1e-10)" in check.detail and "(tol 1e-09)" in check.detail
+
+    def test_a_umat_of_a_model_solved_by_autodiff_alone_is_held_to_stress_tol(
+            self, af_module, monkeypatch):
+        """There is no hand-written algebra for it to be a port of: its own
+        iteration and the autodiff one agree as far as each was carried."""
+        import returnmap.verification.model as check_module
+        from returnmap.models import AFKinematic3D
+
+        module = af_module()
+        with open(__import__("importlib").util.find_spec(module).origin, "a") as stand_in:
+            stand_in.write(
+                "\n\n_exact = core\n\n"
+                "def core(*args):\n"
+                "    stress, alpha, ep, ddsdde = _exact(*args)\n"
+                "    return stress * (1.0 + 1e-8), alpha, ep, ddsdde\n")
+        declared = Umat(AFKinematic3D, module=module, sources=[], subroutine="core",
+                        statev=["ep", "alpha"], entry=None)
+        monkeypatch.setattr(check_module, "umat_of", lambda model: declared)
+        report = check_model(AFKinematic3D.at_defaults())
+        check = report["UMAT"]
+        assert check.status == "passed", report.summary()
+        assert "(tol 1e-06)" in check.detail
+        assert check_model(AFKinematic3D.at_defaults(), stress_tol=1e-9)["UMAT"].status == "failed"
+
     def test_a_umat_that_disagrees_fails_only_its_own_row(self, family):
         package, module, tmp_path = family
         build(tmp_path, module, scale=1.001)          # stress 0.1 % too large

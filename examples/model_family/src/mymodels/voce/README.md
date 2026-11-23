@@ -206,7 +206,7 @@ J2Voce3D: every check that applies passes
   ok   hand-written solution     4.9e-13 (tol 1e-08) over 3 rows at 47 plastic steps
   ok   hand-written vs autodiff  stress 3.3e-12, state 4.2e-12 (tol 1e-06), tangent 4.8e-12 (tol 1e-05) over 2 histories
   ok   hand-written tangent      4.6e-10 (tol 1e-05) at 8 plastic steps
-  ok   UMAT                      stress 2.7e-16, state 5.2e-16 (tol 1e-06), tangent 4.0e-16 (tol 1e-05) over 2 histories (voce_3d)
+  ok   UMAT                      stress 2.7e-16, state 5.2e-16 (tol 1e-10), tangent 4.0e-16 (tol 1e-09) over 2 histories (voce_3d)
   ok   UMAT entry                0.0e+00 (tol 1e-12) against voce_3d over 2 histories (voce_3d.umat)
   histories: uniaxial (24 plastic steps), multiaxial (23 plastic steps)
 J2Voce3D over its range: every case passes
