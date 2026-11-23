@@ -77,7 +77,7 @@ from returnmap.verification.jacobian import check_hand_blocks
 from returnmap.verification.solution import check_solution
 from returnmap.verification.tangent import check_tangent
 from returnmap.verification.test_cases import estimate_yield_strain, generate_strain_history
-from returnmap.verification.umat import umat_of
+from returnmap.verification.umat import umat_of, verification_modules
 
 if TYPE_CHECKING:
     from returnmap.core.result import StressUpdateResult
@@ -233,6 +233,26 @@ def standard_histories(
         ]
         histories["multiaxial"] = FieldHistory(FieldType.STRAIN, np.array(rows))
     return histories
+
+
+def declared_models(package: str) -> list[MaterialModel]:
+    """The models a package of models declares for checking, its subpackages included.
+
+    ``package`` is a dotted name: a family, or a package of families.  The
+    models are those of the ``MODELS`` list of each module named
+    ``verification`` — the ones the family's own tests run
+    :func:`check_model` on.
+    """
+    found: list[MaterialModel] = []
+    for module in verification_modules(package):
+        for model in getattr(module, "MODELS", ()):
+            if not isinstance(model, MaterialModel):
+                raise TypeError(
+                    f"{module.__name__}.MODELS holds {model!r}; "
+                    "it lists model instances (Model.at_defaults())"
+                )
+            found.append(model)
+    return found
 
 
 def _family_declaration(model: MaterialModel, name: str) -> Callable | None:

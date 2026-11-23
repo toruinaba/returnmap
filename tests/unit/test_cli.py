@@ -1,4 +1,4 @@
-"""The build command's own logic: what it hands to f2py.
+"""The commands' own logic: what build hands to f2py, what check runs and reports.
 
 Running an actual build needs gfortran and is covered in ``tests/e2e``.
 """
@@ -107,13 +107,12 @@ def test_family_can_be_a_package_of_families(monkeypatch, tmp_path):
         "j2_isotropic_3d", "yu_kinematic_3d", "yu_kinematic_ps"]
 
 
-def test_family_without_a_umat_is_an_error(monkeypatch, capsys):
-    import pytest
-
-    with pytest.raises(SystemExit) as exit_info:
-        _run_build(monkeypatch, "--family", "returnmap.models.af_kinematic")
-    assert exit_info.value.code == 1
-    assert "declares no UMAT" in capsys.readouterr().out
+def test_family_without_a_umat_has_nothing_to_build(monkeypatch, capsys):
+    """Not an error: the same command serves a family before it has a UMAT."""
+    built = _run_build(monkeypatch, "--family", "returnmap.models.af_kinematic")
+    assert built == []
+    out = capsys.readouterr().out
+    assert "declares no UMAT" in out and "nothing to build" in out
 
 
 def test_family_and_source_files_are_alternatives(monkeypatch, capsys):
@@ -124,3 +123,90 @@ def test_family_and_source_files_are_alternatives(monkeypatch, capsys):
             _run_build(monkeypatch, *argv)
         assert exit_info.value.code == 2
     assert "--family <package>" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# check
+# ---------------------------------------------------------------------------
+
+def _run_check(monkeypatch, capsys, *argv):
+    """Exit code and output of ``returnmap check <argv>``."""
+    import pytest
+
+    monkeypatch.setattr(sys, "argv", ["returnmap", "check", *argv])
+    code = 0
+    try:
+        main()
+    except SystemExit as exit_info:
+        code = exit_info.code
+    return code, capsys.readouterr().out
+
+
+def test_check_prints_the_report_of_every_declared_model(monkeypatch, capsys):
+    code, out = _run_check(monkeypatch, capsys, "--family", "returnmap.models.j2_isotropic")
+    assert code == 0
+    for name in ("J2Isotropic3D", "J2IsotropicPS", "J2Isotropic1D"):
+        assert f"{name}: every check that applies passes" in out
+    assert out.rstrip().endswith("3 model(s) checked: every one passes")
+
+
+def test_check_exits_with_1_when_a_model_fails(monkeypatch, capsys):
+    import returnmap.verification.model as module
+    from returnmap.models import J2Isotropic3D
+
+    class TangentOff(J2Isotropic3D):
+        def user_defined_tangent(self, new, dlambda, inc):
+            return 1.01 * super().user_defined_tangent(new, dlambda, inc)
+
+    monkeypatch.setattr(module, "declared_models", lambda package: [TangentOff.at_defaults()])
+    code, out = _run_check(monkeypatch, capsys, "--family", "anything")
+    assert code == 1
+    assert "FAIL hand-written tangent" in out
+    # The table behind the failed line, without being asked for.
+    assert "    hand-written tangent — uniaxial[0]:" in out
+    assert "tangent check" in out
+    assert "and 5 more" in out
+    assert out.rstrip().endswith("1 model(s) checked: 1 failed — TangentOff")
+
+
+def test_check_names_a_model_by_the_parameters_that_are_not_typical(monkeypatch, capsys):
+    import returnmap.verification.model as module
+    from returnmap.models import J2Isotropic1D
+
+    models = [J2Isotropic1D.at_defaults(), J2Isotropic1D.at_defaults(H=0.0, sigma_y0=300.0)]
+    monkeypatch.setattr(module, "declared_models", lambda package: models)
+    code, out = _run_check(monkeypatch, capsys, "--family", "anything")
+    assert code == 0
+    assert "J2Isotropic1D (sigma_y0=300, H=0):" in out
+
+
+def test_check_without_models_is_an_error(monkeypatch, capsys):
+    code, out = _run_check(monkeypatch, capsys, "--family", "returnmap.verification")
+    assert code == 1
+    assert "declares no model to check" in out
+
+
+def test_a_umat_that_is_not_built_fails_only_when_required(monkeypatch, capsys):
+    import pytest
+
+    if __import__("importlib").util.find_spec("j2_isotropic_3d") is not None:
+        pytest.skip("j2_isotropic_3d is built here")
+    family = ("--family", "returnmap.models.j2_isotropic")
+    code, out = _run_check(monkeypatch, capsys, *family)
+    assert code == 0 and "required:" not in out
+    code, out = _run_check(monkeypatch, capsys, *family, "--require-built")
+    assert code == 1
+    assert "  required: UMAT — module j2_isotropic_3d is not built" in out
+    assert "  required: UMAT entry — module j2_isotropic_3d is not built" in out
+    assert out.rstrip().endswith("3 model(s) checked: 1 failed — J2Isotropic3D")
+
+
+def test_check_with_range_runs_check_range_as_well(monkeypatch, capsys):
+    import returnmap.verification.model as module
+    from returnmap.models import J2Isotropic1D
+
+    monkeypatch.setattr(module, "declared_models", lambda package: [J2Isotropic1D.at_defaults()])
+    code, out = _run_check(monkeypatch, capsys, "--family", "anything", "--range", "--seed", "3")
+    assert code == 0
+    assert "J2Isotropic1D over its range: every case passes" in out
+    assert "random single-step" in out

@@ -21,6 +21,8 @@ uv run pytest src/returnmap/models/j2_isotropic -m "not fortran" -v  # One model
 uv run returnmap build --family returnmap.models                 # every UMAT the models declare
 uv run returnmap build --abaqus-stubs src/returnmap/models/j2_isotropic/fortran/j2_isotropic_3d.f90 --name j2_isotropic_3d
 uv run returnmap list / clean
+uv run returnmap check --family returnmap.models.j2_isotropic   # check_model on every model the family declares
+#   --range: check_range as well (slow)   --require-built: an unbuilt UMAT counts as a failure
 make docker-build && make docker-test
 
 # Documentation (Sphinx + MyST; needs `uv sync --extra docs`)
@@ -71,7 +73,7 @@ returnmap is a framework for validating Fortran UMAT (Abaqus user material) cons
 
 スイッチは integrator の `raise_on_nonconverged` だけ。driver は自分の外側 NR の失敗にも同じ設定を使い、独自のスイッチを持たない。integrator の契約(`StressIntegrator` Protocol: `dimension` / `ntens` / `raise_on_nonconverged` / `initial_state` / `increment` / `elastic_tangent` / `stress_update`)は `simulation/integrator/base.py`。
 
-- **Integrator**: 既定 raise。`raise_on_nonconverged=False` で `converged=False` を返す。自動微分の NR は非収束を報告する前に 1 回解き直す(`nr_restart`)。Δλ<0 は KKT 違反なので非収束扱い(手書き経路の結果も同じ条件で確かめる: Δλ<0 と非有限の値は、`converged=True` と報告されていても非収束)。許容値はスケール不変(`tol × max(1, ‖σ_trial‖_∞)`)。
+- **Integrator**: 既定 raise。`raise_on_nonconverged=False` で `converged=False` を返す。そのステップの接線は弾性接線で、手書きの接線も自動微分の接線も反復値では評価しない(値で返した失敗を例外に変えないため)。自動微分の NR は非収束を報告する前に 1 回解き直す(`nr_restart`)。Δλ<0 は KKT 違反なので非収束扱い(手書き経路の結果も同じ条件で確かめる: Δλ<0 と非有限の値は、`converged=True` と報告されていても非収束)。許容値はスケール不変(`tol × max(1, ‖σ_trial‖_∞)`)。
 - **Driver**: `iter_run` は非収束 step を yield して停止(非収束イテレートで状態を進めない)。`run` は完了した step だけを返し、`DriverResult.converged` / `failed_step` で知らせる(失敗した step は配列に入れない)。
 - **fitting**: 評価の非収束は有限ペナルティ(`FAILURE_PENALTY`)でスコアし続行。全評価失敗時のみ raise。設計理由は `fitting/objective.py`。
 - **service**: `run_simulation` は部分履歴 + `converged` / `failed_step` を値で返す(呼び出し側バグのみ `ValueError`)。

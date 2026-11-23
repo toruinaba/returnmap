@@ -683,6 +683,20 @@ class _PythonIntegratorBase:
 
         rm = self.return_mapping(inc)
 
+        if not rm.converged:
+            # Reached only with raise_on_nonconverged=False.  There is no
+            # solution to linearise about: a hand-written tangent would be
+            # handed an iterate it was never written for, and the autodiff one
+            # would differentiate a residual that is not zero.  The result
+            # says "not converged" and carries the elastic tangent — a failure
+            # reported as a value must not turn into an exception here.
+            return StressUpdateResult(
+                return_mapping=rm,
+                ddsdde=self._elastic_tangent(inc),
+                is_plastic=True,
+                increment=inc,
+            )
+
         # user_defined tangents stay eager: they are cheap, and _method ==
         # "user_defined" must raise NotImplementedError here, not at first
         # access.  Only the autodiff tangent is deferred — StrainDriver never

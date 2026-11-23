@@ -62,6 +62,23 @@ uv run pytest
 
 `check_model` は、標準の載荷履歴でモデルを計算し、モデルに該当する検査をすべて実行する。報告は `report.summary()` で表示する。
 
+`returnmap check` は、パッケージが `MODELS` に宣言したモデルのすべてについて、同じ報告を表示する。
+
+```bash
+uv run returnmap check --family mymodels
+```
+
+| 指定 | 内容 |
+|---|---|
+| `--family <パッケージ>` | 検査するモデルのパッケージ。ファミリ (`mymodels.voce`)、またはファミリのパッケージ (`mymodels`) |
+| `--range` | 各モデルに `check_range` も実行する (パラメータの範囲の端と、乱数の載荷履歴。[検査の一覧](verification.md) の 8 節) |
+| `--seed <n>` | `--range` の乱数の種。既定は 0 |
+| `--require-built` | 宣言されているがビルドしていない UMAT を、不合格に数える。指定しない場合、その行は `not built` になり、不合格には数えない |
+| 終了コード | 全モデルが合格した場合は 0、それ以外は 1 |
+| 不合格の行 | 行の下に、元の検査の報告 (最初の 3 つ) を表示する |
+
+スクリプトから報告を扱う場合は、`check_model` を直接呼ぶ。
+
 ```{literalinclude} ../../examples/model_family/report.py
 :language: python
 :start-after: "# %% The report of every model"

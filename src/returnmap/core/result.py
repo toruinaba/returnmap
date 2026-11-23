@@ -104,7 +104,10 @@ class StressUpdateResult:
         callable instead of the array, because strain-controlled stepping
         never consumes the tangent and its computation (autodiff Jacobian)
         can dominate the step cost.  The materialised array is cached, so
-        repeated access costs nothing extra.
+        repeated access costs nothing extra.  For a step a Python integrator
+        did not converge on (``converged`` is ``False``) this is the elastic
+        tangent: there is no solution to linearise about, and neither the
+        hand-written nor the autodiff tangent is evaluated at an iterate.
     is_plastic : bool or None
         True if the step activated plasticity.  ``None`` when the information
         is not available (e.g. results produced by :class:`~returnmap.simulation.FortranIntegrator`

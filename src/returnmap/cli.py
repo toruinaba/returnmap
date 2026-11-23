@@ -1,9 +1,10 @@
-"""returnmap CLI — Fortran build toolkit for Python users.
+"""returnmap CLI — build the UMATs of a package of models, and check its models.
 
 Usage:
   returnmap build <files...> --name <module_name> [--abaqus-stubs] [--link <lib>]...
                   [--output-dir <dir>] [--verbose]
   returnmap build --family <package> [--output-dir <dir>] [--verbose]
+  returnmap check --family <package> [--range] [--seed <n>] [--require-built]
   returnmap stubs
   returnmap clean [--dir <dir>] [--dry-run]
   returnmap list  [--dir <dir>]
@@ -207,9 +208,11 @@ def cmd_build(args: argparse.Namespace) -> None:
 
         umats = declared_umats(args.family)
         if not umats:
-            print(f"Error: {args.family} declares no UMAT "
-                  "(a UMATS list in a module named verification).")
-            sys.exit(1)
+            # Not an error: a family is built and checked with the same two
+            # commands before it has a UMAT as after.
+            print(f"{args.family} declares no UMAT "
+                  "(a UMATS list in a module named verification): nothing to build.")
+            return
         for umat in umats:
             _build_module(
                 umat.source_paths(), umat.module, abaqus_stubs=True,
@@ -233,6 +236,73 @@ def cmd_build(args: argparse.Namespace) -> None:
     print(f"  from returnmap.simulation import FortranModule")
     print(f"  import sys; sys.path.insert(0, '{output_dir}')")
     print(f"  umat = FortranModule('{module_name}')")
+
+
+def _model_label(model) -> str:
+    """Class name, with the parameters that differ from the documented typical ones."""
+    cls = type(model)
+    meta = getattr(cls, "param_meta", None) or {}
+    moved = [
+        f"{name}={getattr(model, name):g}"
+        for name in model.param_names
+        if name in meta and meta[name].default is not None
+        and getattr(model, name) != meta[name].default
+    ]
+    return f"{cls.__name__} ({', '.join(moved)})" if moved else cls.__name__
+
+
+def _failed_parts(check, limit: int = 3) -> list[str]:
+    """The reports behind a failed line, as indented text: where to look first."""
+    failed = [
+        (key, report) for key, report in check.reports.items()
+        if hasattr(report, "summary") and not getattr(report, "passed", True)
+    ]
+    lines: list[str] = []
+    for key, report in failed[:limit]:
+        lines.append(f"    {check.name} — {key}:")
+        lines += [f"      {line}" for line in report.summary().splitlines()]
+    if len(failed) > limit:
+        lines.append(f"    {check.name} — and {len(failed) - limit} more")
+    return lines
+
+
+def cmd_check(args: argparse.Namespace) -> None:
+    from returnmap.verification import check_model, check_range
+    from returnmap.verification.model import declared_models
+
+    models = declared_models(args.family)
+    if not models:
+        print(f"Error: {args.family} declares no model to check "
+              "(a MODELS list in a module named verification).")
+        sys.exit(1)
+
+    failed: list[str] = []
+    for model in models:
+        label = _model_label(model)
+        if label != type(model).__name__:
+            print(f"{label}:")
+        report = check_model(model)
+        print(report.summary())
+        ok = report.passed
+        for check in report.checks:
+            if check.status == "failed":
+                for line in _failed_parts(check):
+                    print(line)
+            elif check.status == "not built" and args.require_built:
+                print(f"  required: {check.name} — {check.detail}")
+                ok = False
+        if args.range:
+            range_report = check_range(model, seed=args.seed)
+            print(range_report.summary())
+            ok = ok and range_report.passed
+        if not ok:
+            failed.append(label)
+        print()
+
+    if failed:
+        print(f"{len(models)} model(s) checked: {len(failed)} failed — {', '.join(failed)}")
+        sys.exit(1)
+    print(f"{len(models)} model(s) checked: every one passes")
 
 
 def cmd_stubs(args: argparse.Namespace) -> None:
@@ -309,7 +379,7 @@ def cmd_list(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="returnmap",
-        description="returnmap — Fortran UMAT build toolkit for Python users",
+        description="returnmap — build the UMATs of a package of models, and check its models",
     )
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
     subparsers.required = True
@@ -374,6 +444,51 @@ def main() -> None:
         help="Show full f2py / compiler output",
     )
     build_parser.set_defaults(func=cmd_build)
+
+    # --- check ---
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Run the common checks on the models a package declares",
+        description=(
+            "Run check_model on every model a package of models declares for checking "
+            "(the MODELS list of each module named verification) and print the reports. "
+            "Exits with 1 when a model fails."
+        ),
+    )
+    check_parser.add_argument(
+        "--family",
+        required=True,
+        metavar="<package>",
+        help=(
+            "The package of models: a family (--family returnmap.models.yu_kinematic) "
+            "or a package of families (--family returnmap.models)"
+        ),
+    )
+    check_parser.add_argument(
+        "--range",
+        action="store_true",
+        help=(
+            "Also run check_range on each model: the ends of its parameter ranges and "
+            "random loading histories.  Costs one check_model per parameter variant"
+        ),
+    )
+    check_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        metavar="<n>",
+        help="Seed of the random histories of --range (default 0)",
+    )
+    check_parser.add_argument(
+        "--require-built",
+        action="store_true",
+        help=(
+            "Count a declared UMAT that is not built as a failure.  Without it such a "
+            "UMAT is reported as 'not built' and does not count against the model, so "
+            "that the checks pass on a machine without gfortran"
+        ),
+    )
+    check_parser.set_defaults(func=cmd_check)
 
     # --- stubs ---
     stubs_parser = subparsers.add_parser(

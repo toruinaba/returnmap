@@ -273,12 +273,11 @@ def _build_dir_on_path() -> None:
         sys.path.insert(0, path)
 
 
-def declared_umats(package: str) -> list[Umat]:
-    """The UMATs a package of models declares, its subpackages included.
+def verification_modules(package: str) -> list:
+    """The ``verification`` modules of a package of models, its subpackages included.
 
     ``package`` is a dotted name: a family (``"returnmap.models.yu_kinematic"``),
-    or a package of families (``"returnmap.models"``).  A UMAT is declared in
-    the ``UMATS`` list of a module named ``verification``.
+    or a package of families (``"returnmap.models"``).
     """
     root = importlib.import_module(package)
     names = [package]
@@ -288,15 +287,25 @@ def declared_umats(package: str) -> list[Umat]:
             for info in pkgutil.walk_packages(root.__path__, prefix=f"{package}.")
             if info.ispkg and not info.name.endswith(".tests")
         ]
+    return [
+        importlib.import_module(f"{name}.verification")
+        for name in names
+        if importlib.util.find_spec(f"{name}.verification") is not None
+    ]
+
+
+def declared_umats(package: str) -> list[Umat]:
+    """The UMATs a package of models declares, its subpackages included.
+
+    A UMAT is declared in the ``UMATS`` list of a module named
+    ``verification`` (:func:`verification_modules`).
+    """
     found: list[Umat] = []
-    for name in names:
-        if importlib.util.find_spec(f"{name}.verification") is None:
-            continue
-        module = importlib.import_module(f"{name}.verification")
+    for module in verification_modules(package):
         for umat in getattr(module, "UMATS", ()):
             if not isinstance(umat, Umat):
                 raise TypeError(
-                    f"{name}.verification.UMATS holds {umat!r}; "
+                    f"{module.__name__}.UMATS holds {umat!r}; "
                     "declare each UMAT with returnmap.verification.Umat"
                 )
             found.append(umat)
