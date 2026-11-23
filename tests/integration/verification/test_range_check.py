@@ -52,6 +52,33 @@ class _GivesUpOnLargeSteps(J2Isotropic3D):
         )
 
 
+class _TangentWrongOnLargeSteps(J2Isotropic3D):
+    """Right return mapping; hand-written tangent 1 % too stiff on a step whose
+    trial stress is more than ten times the yield stress."""
+
+    def large(self, inc):
+        return bool(self.vonmises(inc.trial["stress"]) >= 10.0 * self.sigma_y0)
+
+    def user_defined_tangent(self, new, dlambda, inc):
+        scale = 1.01 if self.large(inc) else 1.0
+        return scale * super().user_defined_tangent(new, dlambda, inc)
+
+
+class _RaisesOnLargeSteps(J2Isotropic3D):
+    """Right wherever it answers; an iteration of its own gives up — by raising —
+    on a step whose trial stress is more than ten times the yield stress."""
+
+    def user_defined_return_mapping(self, inc):
+        if self.vonmises(inc.trial["stress"]) >= 10.0 * self.sigma_y0:
+            raise RuntimeError("inner iteration did not converge")
+        return super().user_defined_return_mapping(inc)
+
+
+class _RaisesEverywhere(J2Isotropic3D):
+    def user_defined_return_mapping(self, inc):
+        raise RuntimeError("inner iteration did not converge")
+
+
 class _NoBounds(J2Isotropic3D):
     param_meta = {
         name: ParamMeta(doc=meta.doc, unit=meta.unit, default=meta.default)
@@ -179,6 +206,82 @@ class TestCheckRange:
         single = report["random single-step"]
         assert single.status == "not solved"
         assert "nothing to compare" in single.detail
+
+    def test_the_two_tangents_are_compared_at_every_step_both_paths_solve(self):
+        """Not only at the few steps the tangent is differenced at."""
+        model = _TangentWrongOnLargeSteps.at_defaults()
+        assert check_model(model).passed                    # the standard histories do not reach it
+        report = check_range(model, variants={})
+        assert report["random"].status == "passed"
+        case = report["random large"]
+        assert case.status == "failed", report.summary()
+        assert "hand-written vs autodiff" in case.detail.split(" failed — ")[0]
+        versus = case.reports["hand-written vs autodiff"]
+        off = [s for s in versus.steps if not s.passed]
+        assert len(off) > 4                                 # more steps than are differenced
+        assert all(s.stress_rel_err < 1e-9 and s.tangent_rel_err > 1e-3 for s in off)
+
+    def test_a_tangent_declared_approximate_on_those_steps_is_excused_there(self):
+        from returnmap.core import hand_tangent
+
+        class Declared(_TangentWrongOnLargeSteps):
+            @hand_tangent(approx_when="large", note="1 % stiff on large steps")
+            def user_defined_tangent(self, new, dlambda, inc):
+                return super().user_defined_tangent(new, dlambda, inc)
+
+        report = check_range(Declared.at_defaults(), variants={})
+        large = report["random large"]
+        assert large.status == "passed", report.summary()
+        assert "tangent(s) declared approximate" in large.detail
+        # Where the declaration covers every step that is differenced, the
+        # tangent is held to nothing — which fails, as it does in check_model.
+        single = report["random single-step"]
+        assert single.status == "failed"
+        assert "the tangent was held to nothing" in single.detail
+
+    def test_a_step_that_raises_is_an_increment_that_was_not_solved(self):
+        report = check_range(_RaisesOnLargeSteps.at_defaults(), variants={})
+        assert report.passed, report.summary()
+        large = report["random large"]
+        solved, total = (int(n) for n in large.detail.split(" increments")[0].split(" of "))
+        assert 0 < solved < total
+        assert report["random single-step"].status == "not solved"
+
+    def test_a_variant_whose_check_raises_is_reported_not_raised(self, monkeypatch):
+        import returnmap.verification.range_check as module
+
+        model = J2Isotropic3D.at_defaults()
+
+        def check(variant, **tolerances):
+            if variant.H == 0.0:
+                raise np.linalg.LinAlgError("Singular matrix")
+            return check_model(variant, **tolerances)
+
+        monkeypatch.setattr(module, "check_model", check)
+        report = check_range(model, histories={})
+        assert [c.name for c in report.cases if c.status == "failed"] == ["H=0"]
+        assert report["H=0"].detail == "could not be checked — LinAlgError: Singular matrix"
+
+    def test_a_programming_error_is_not_reported_as_unsolved(self):
+        class Broken(J2Isotropic3D):
+            def user_defined_return_mapping(self, inc):
+                return inc.no_such_attribute
+
+        with pytest.raises(AttributeError):
+            check_range(Broken.at_defaults(), variants={})
+
+    def test_no_random_history_solved_is_not_a_pass(self):
+        report = check_range(_RaisesEverywhere.at_defaults(), variants={})
+        assert [c.status for c in report.cases] == ["not solved"] * 3
+        assert report.nothing_compared_under_loading
+        assert not report.passed
+        assert "no random history was solved far enough" in report.summary()
+
+    def test_one_history_that_is_not_solved_does_not_count(self):
+        report = check_range(_GivesUpOnLargeSteps.at_defaults(), variants={})
+        assert report["random single-step"].status == "not solved"
+        assert not report.nothing_compared_under_loading
+        assert report.passed
 
     def test_a_model_solved_by_autodiff_alone(self):
         report = check_range(AFKinematic3D.at_defaults(), variants={})
@@ -338,6 +441,15 @@ class TestEntryUnderRandomLoading:
             assert case.status == "failed"
             assert case.detail.startswith("UMAT entry failed")
             assert case.reports["UMAT"].passed
+
+    def test_the_entry_is_held_to_round_off_of_the_core(self, monkeypatch):
+        """Nine digits of agreement are not enough: the entry passes the core's numbers on."""
+        self.declare(monkeypatch, _StandIn(
+            lambda model: model,
+            entry=lambda model: model.with_params(H=model.H * (1.0 + 1e-6))))
+        report = check_range(J2Isotropic3D.at_defaults(), variants={})
+        assert all(case.status == "failed" for case in report.cases)
+        assert all(case.reports["UMAT entry"].max_stress_rel_err < 1e-6 for case in report.cases)
 
     def test_an_entry_that_moves_on_where_the_model_gives_up_fails(self, monkeypatch):
         sound = J2Isotropic3D.at_defaults()

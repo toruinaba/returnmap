@@ -335,7 +335,8 @@ def _approx_note(n: int, declared: HandTangent | None) -> str:
 def _check_tangents(
     integrator: "StressIntegrator", runs: Mapping[str, list], n_points: int, tol: float,
     model: MaterialModel | None = None, declared: HandTangent | None = None,
-) -> tuple[Status, str, dict]:
+    *, unsolved: tuple[type[BaseException], ...] = (),
+) -> tuple[str, str, dict]:
     """Difference the tangent at a few plastic steps of each history.
 
     ``declared`` is the model's ``hand_tangent`` declaration when the tangent
@@ -343,12 +344,17 @@ def _check_tangents(
     is the tolerance at every step; with ``approx_when``, the steps the
     condition holds on are held to ``approx`` — or left out, if none is given
     — and the rest to ``tol``.
+
+    ``unsolved`` are the exceptions that mean a perturbed step could not be
+    solved (:func:`check_range`, under random loading): such a point is left
+    out and counted.  When every point is, the status is ``"not solved"``.
     """
     exact_tol = tol
     if declared is not None and declared.approx_when is None and declared.approx is not None:
         exact_tol = declared.approx             # approximate at every step
     reports = {}
     n_approx = 0
+    n_unsolved = 0
     ok = True
     for name, results in runs.items():
         for k, r in enumerate(_tangent_points(results, n_points)):
@@ -363,13 +369,21 @@ def _check_tangents(
                 if declared.approx is None:
                     continue                    # left out of the judgement
                 step_tol = declared.approx
-            report = check_tangent(
-                integrator, inc.strain_inc, state_n["stress"], state_n, tol=step_tol,
-                eps=_difference_step(integrator, r, state_n),
-            )
+            try:
+                report = check_tangent(
+                    integrator, inc.strain_inc, state_n["stress"], state_n, tol=step_tol,
+                    eps=_difference_step(integrator, r, state_n),
+                )
+            except unsolved:
+                n_unsolved += 1
+                continue
             reports[f"{name}[{k}]"] = report
             ok = ok and report.passed
     if not reports:
+        if n_unsolved:
+            return "not solved", (
+                f"the differences could not be taken at any of {n_unsolved} steps"
+            ), reports
         if n_approx:
             return "failed", (
                 f"all {n_approx} sampled steps are declared approximate — "
@@ -382,7 +396,36 @@ def _check_tangents(
         f"{worst:.1e} (tol {exact_tol:.0e}) at {len(exact)} plastic steps"
         + _approx_note(n_approx, declared)
     )
+    if n_unsolved:
+        detail += f"; {n_unsolved} could not be differenced"
     return ("passed" if ok else "failed"), detail, reports
+
+
+def _hand_tangent_tol(declared: HandTangent | None, stress_tol: float) -> float:
+    """Tolerance on the hand-written tangent against the autodiff one."""
+    if declared is not None and declared.approx_when is None and declared.approx is not None:
+        return declared.approx                  # declared approximate at every step
+    return 10.0 * stress_tol
+
+
+def _only_the_declared_tangent_is_off(
+    model: MaterialModel, declared: HandTangent | None, step, hand_result, stress_tol: float,
+) -> bool:
+    """A crosscheck step that disagrees in nothing but a tangent declared approximate there.
+
+    ``hand_result`` is the result of the hand-written path on that step — the
+    one the declared condition is evaluated on.
+    """
+    if not (step.a_converged and step.b_converged):
+        return False
+    if step.stress_rel_err > stress_tol or any(
+        e > stress_tol for e in step.state_rel_err.values()
+    ):
+        return False
+    if not _declared_approximate(model, declared, hand_result):
+        return False
+    assert declared is not None
+    return declared.approx is None or step.tangent_rel_err <= declared.approx
 
 
 def _check_umat(
@@ -431,8 +474,15 @@ def _check_umat(
     )
 
 
+#: Tolerance of the ABAQUS entry against the core it wraps.  The entry passes
+#: the core's arguments on and its results back, so the two are the same
+#: numbers; the tolerance only leaves room for a compiler that inlines the
+#: core and orders its arithmetic differently.
+_ENTRY_TOL = 1e-12
+
+
 def _check_umat_entry(
-    model: MaterialModel, histories: Mapping[str, FieldHistory], stress_tol: float,
+    model: MaterialModel, histories: Mapping[str, FieldHistory],
 ) -> ModelCheck:
     """The ABAQUS entry of the model's UMAT against the subroutine it wraps."""
     name = "UMAT entry"
@@ -458,7 +508,7 @@ def _check_umat_entry(
         reports = {
             key: crosscheck(
                 core, entry, load, lockstep=True,
-                stress_tol=stress_tol, state_tol=stress_tol, tangent_tol=10.0 * stress_tol,
+                stress_tol=_ENTRY_TOL, state_tol=_ENTRY_TOL, tangent_tol=_ENTRY_TOL,
             )
             for key, load in histories.items()
         }
@@ -475,7 +525,7 @@ def _check_umat_entry(
                if r.max_tangent_rel_err is not None]
     return ModelCheck(
         name, "passed" if all(r.passed for r in reports.values()) else "failed",
-        f"{_worst(errors):.1e} (tol {stress_tol:.0e}) against {core_name} "
+        f"{_worst(errors):.1e} (tol {_ENTRY_TOL:.0e}) against {core_name} "
         f"over {len(reports)} histories ({umat.module}.{umat.entry})",
         reports,
     )
@@ -512,8 +562,10 @@ def check_model(
         Tolerance of a hand-written solution in the framework residual.
     stress_tol : float, default 1e-6
         Tolerance of the hand-written trajectory against the autodiff one,
-        for stress and state variables; the tangents are compared at ten
-        times this.
+        and of the UMAT against the Python model, for stress and state
+        variables; the tangents are compared at ten times this.  The ABAQUS
+        entry is held to 1e-12 against the UMAT's core whatever this is: it
+        only passes the core's numbers on.
     n_tangent_points : int, default 4
         Plastic steps per history at which a tangent is differenced.  Each
         costs ``2 * ntens`` stress updates.
@@ -636,7 +688,7 @@ def check_model(
             ModelCheck("hand-written tangent", "not declared", reason),
         ]
         checks.append(_check_umat(model, histories, stress_tol))
-        checks.append(_check_umat_entry(model, histories, stress_tol))
+        checks.append(_check_umat_entry(model, histories))
         return ModelReport(cls.__name__, checks, n_plastic, approximations)
 
     analytical = PythonAnalyticalIntegrator(model, raise_on_nonconverged=False)
@@ -661,9 +713,7 @@ def check_model(
     # The hand-written tangent may be declared an approximation (hand_tangent):
     # everywhere, to a tolerance; or on the steps a condition names.
     declared = hand_tangent_record(cls)
-    cc_tangent_tol = 10.0 * stress_tol
-    if declared is not None and declared.approx_when is None and declared.approx is not None:
-        cc_tangent_tol = declared.approx
+    cc_tangent_tol = _hand_tangent_tol(declared, stress_tol)
     reports = {
         name: crosscheck(
             numerical, analytical, load,
@@ -672,21 +722,12 @@ def check_model(
         for name, load in histories.items()
     }
 
-    def only_the_declared_tangent_is_off(step) -> bool:
-        """A step that disagrees in nothing but a tangent declared approximate there."""
-        if not (step.a_converged and step.b_converged):
-            return False
-        if step.stress_rel_err > stress_tol or any(
-            e > stress_tol for e in step.state_rel_err.values()
-        ):
-            return False
-        if not _declared_approximate(model, declared, step.result_b):
-            return False
-        assert declared is not None
-        return declared.approx is None or step.tangent_rel_err <= declared.approx
-
     excused = {
-        name: [s for s in r.steps if not s.passed and only_the_declared_tangent_is_off(s)]
+        name: [
+            s for s in r.steps
+            if not s.passed and _only_the_declared_tangent_is_off(
+                model, declared, s, s.result_b, stress_tol)
+        ]
         for name, r in reports.items()
     }
     n_excused = sum(len(steps) for steps in excused.values())
@@ -727,5 +768,5 @@ def check_model(
             "no user_defined_tangent on the model (the tangent is the autodiff one)",
         ))
     checks.append(_check_umat(model, histories, stress_tol))
-    checks.append(_check_umat_entry(model, histories, stress_tol))
+    checks.append(_check_umat_entry(model, histories))
     return ModelReport(cls.__name__, checks, n_plastic, approximations)

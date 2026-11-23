@@ -207,7 +207,7 @@ J2Voce3D: every check that applies passes
   ok   hand-written vs autodiff  stress 3.3e-12, state 4.2e-12 (tol 1e-06), tangent 4.8e-12 (tol 1e-05) over 2 histories
   ok   hand-written tangent      4.6e-10 (tol 1e-05) at 8 plastic steps
   ok   UMAT                      stress 2.7e-16, state 5.2e-16 (tol 1e-06), tangent 4.0e-16 (tol 1e-05) over 2 histories (voce_3d)
-  ok   UMAT entry                0.0e+00 (tol 1e-06) against voce_3d over 2 histories (voce_3d.umat)
+  ok   UMAT entry                0.0e+00 (tol 1e-12) against voce_3d over 2 histories (voce_3d.umat)
   histories: uniaxial (24 plastic steps), multiaxial (23 plastic steps)
 J2Voce3D over its range: every case passes
   parameters — check_model at each end of every documented range
@@ -223,7 +223,7 @@ J2Voce3D over its range: every case passes
     ok   b=1000              7 checks pass (converges, tangent, hand-written solution, hand-written vs autodiff, hand-written tangent, UMAT, UMAT entry)
   loading — random strain histories
     ok   random              36 of 36 increments solved, 35 plastic; solution 6.3e-13, hand-written vs autodiff 5.5e-12, tangent 2.4e-10, UMAT 4.2e-16, UMAT entry 0.0e+00
-    ok   random large        24 of 24 increments solved, 24 plastic; solution 1.8e-13, hand-written vs autodiff 3.2e-11, tangent 1.1e-10, UMAT 8.1e-16, UMAT entry 0.0e+00
+    ok   random large        24 of 24 increments solved, 24 plastic; solution 1.8e-13, hand-written vs autodiff 6.7e-11, tangent 1.1e-10, UMAT 8.1e-16, UMAT entry 0.0e+00
     ok   random single-step  6 of 6 increments solved, 6 plastic; solution 1.1e-14, hand-written vs autodiff 2.9e-12, tangent 6.0e-10, UMAT 2.4e-16, UMAT entry 0.0e+00
 
 J2Voce1D: every check that applies passes
