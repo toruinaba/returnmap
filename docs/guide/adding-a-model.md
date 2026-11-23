@@ -50,14 +50,14 @@ returnmap は PyPI に無いため、`pyproject.toml` でタグに固定する�
 
 ```toml
 [project]
-dependencies = ["returnmap>=0.4.1"]
+dependencies = ["returnmap>=0.5.0"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
 fortran = ["meson", "ninja"]       # UMAT をビルドする場合
 
 [tool.uv.sources]
-returnmap = { git = "https://github.com/toruinaba/returnmap", tag = "v0.4.1" }
+returnmap = { git = "https://github.com/toruinaba/returnmap", tag = "v0.5.0" }
 
 [tool.pytest.ini_options]
 testpaths = ["src/mymodels"]
