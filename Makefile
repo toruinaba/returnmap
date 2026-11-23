@@ -1,7 +1,7 @@
 # returnmap Makefile
 # Provides shortcuts for Fortran compilation and test execution.
 
-.PHONY: fortran-build fortran-build-umat fortran-build-yu fortran-build-all fortran-build-yu-3d-bench docker-bench-yu-3d test test-unit test-integration test-e2e test-e2e-slow test-slow test-models test-models-fortran test-all docker-build docker-test docker-test-yu docs docs-figures docs-clean clean
+.PHONY: fortran-build fortran-build-umat fortran-build-ow fortran-build-yu fortran-build-all fortran-build-yu-3d-bench docker-bench-yu-3d test test-unit test-integration test-e2e test-e2e-slow test-slow test-models test-models-fortran test-all docker-build docker-test docker-test-yu docs docs-figures docs-clean clean
 # Archived targets (fixed-form .for files moved to archives/fortran_fixed_form/):
 #   fortran-build-yu-fixed  -- uv run returnmap build --abaqus-stubs archives/fortran_fixed_form/yu_kinematic_3d_fixed.for --name yu_kinematic_3d_fixed --link lapack --link blas
 
@@ -30,6 +30,10 @@ fortran-build:
 ## Compile the J2 UMAT (j2_isotropic_3d)
 fortran-build-umat:
 	$(BUILD) --family returnmap.models.j2_isotropic
+
+## Compile the Ohno-Wang UMAT (ow_kinematic_3d)
+fortran-build-ow:
+	$(BUILD) --family returnmap.models.ow_kinematic
 
 ## Compile the YU UMATs (yu_kinematic_3d and yu_kinematic_ps)
 fortran-build-yu:
@@ -96,9 +100,9 @@ DOCKER_RUN = docker run --rm --user $$(id -u):$$(id -g) \
 	-v $$(pwd):/workspace -w /workspace -e HOME=/tmp \
 	-e PYTHONPATH=/workspace/src:/workspace/fortran returnmap-fortran
 
-## Build the J2 UMAT and run the Python-vs-UMAT tests inside Docker
+## Build the J2 and Ohno-Wang UMATs and run the Python-vs-UMAT tests inside Docker
 docker-test:
-	$(DOCKER_RUN) bash -c "make PY=python fortran-build-umat && \
+	$(DOCKER_RUN) bash -c "make PY=python fortran-build-umat fortran-build-ow && \
 		python -m pytest $(MODELS) -m fortran -v"
 
 ## Build both YU Fortran modules and run the YU Python-vs-UMAT tests in Docker

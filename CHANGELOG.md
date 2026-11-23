@@ -25,6 +25,15 @@
   integrator として返す(文書の「UMAT を確かめる」4 節)。入口と中核の比較の許容値は `1e-12` である
   (入口は中核の値を受け渡すだけなので、差は 0 になる)。
 
+- **Ohno-Wang 型のモデルの 3D に、手書きの解法と UMAT を足した(`OWKinematic3D`)。** 離散化した発展則は
+  背応力について閉じた形で解けないが、`w = 1 / (1 + γ Δλ ᾱ)` と置くと未知数がスカラー 1 個になる。
+  区間で保護した Newton 法で解き、整合接線は閉じた式で与える(`γ > 0` で非対称)。UMAT は
+  `fortran/ow_kinematic_3d.f90` で、`returnmap build --family returnmap.models.ow_kinematic` がビルドする。
+  `PythonIntegrator(OWKinematic3D(...))` は、今までの自動微分ではなく、手書きの解法を使うようになる
+  (結果の差は 1e-9 以下。自動微分で解く場合は `PythonNumericalIntegrator`)。README を仕様書の形にし、
+  性質 P1〜P12 を 1 つずつテストにした(`tests/test_properties.py`)。検査にかけるモデルに、動的回復の
+  弱い組(`gamma = 1`)を足した。仕様書から LLM に実装させる試行で作られ、導出も含めて検査で確かめたもの
+  である。
 - **`returnmap check --family <パッケージ>`: 宣言したモデルの検査をコマンドで実行する。** パッケージが
   `verification.py` の `MODELS` に宣言したモデルのすべてに `check_model` を実行し、報告を表示する。
   不合格の行には、元の検査の報告を続けて表示する。全モデルが合格すれば終了コード 0、それ以外は 1 である。

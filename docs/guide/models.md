@@ -15,7 +15,7 @@
 | Armstrong-Frederick | `AFKinematic*` | 移動硬化 | 自動微分 | [式](models/af_kinematic.md) |
 | Chaboche (背応力 1 つ) | `ChabocheKinematic*` | 移動硬化と、飽和する等方硬化 | 自動微分 | [式](models/chaboche_single.md) |
 | Chaboche (背応力 3 つ) | `ChabocheKinematicMulti*` | 背応力と等方硬化を、3 項ずつ重ねる | 自動微分 | [式](models/chaboche_multi.md) |
-| Ohno-Wang 型 | `OWKinematic*` | 移動硬化 (implicit の発展則) | 自動微分 | [式](models/ow_kinematic.md) |
+| Ohno-Wang 型 | `OWKinematic*` | 移動硬化 (implicit の発展則) | `3D` は手書きの解法 (スカラー 1 個の反復) と UMAT を持つ。ほかは自動微分 | [式](models/ow_kinematic.md) |
 | Yoshida-Uemori | `YUKinematic*` | 二曲面と停留曲面 | `3D` と `PS` は手書きの解法、手導出のヤコビアン、UMAT を持つ | [式](models/yu_kinematic.md) |
 
 定式化のページは、式、状態変数、パラメータ、飽和値などの性質、検証の範囲を、ファミリごとに示す。本文は、各ファミリのディレクトリにある `README.md` である。

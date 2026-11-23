@@ -104,7 +104,7 @@ def test_family_builds_what_the_models_declare(monkeypatch, tmp_path):
 def test_family_can_be_a_package_of_families(monkeypatch, tmp_path):
     built = _run_build(monkeypatch, "--family", "returnmap.models", "-o", str(tmp_path))
     assert [name for name, _, _ in built] == [
-        "j2_isotropic_3d", "yu_kinematic_3d", "yu_kinematic_ps"]
+        "j2_isotropic_3d", "ow_kinematic_3d", "yu_kinematic_3d", "yu_kinematic_ps"]
 
 
 def test_family_without_a_umat_has_nothing_to_build(monkeypatch, capsys):
