@@ -7,6 +7,8 @@ verdict and ``report.summary()`` the table behind it, so a test reads
 ==========================  ====================================================
 :func:`check_model`         every check below that applies to a model, in one
                             call
+:func:`check_range`         the same, at the ends of the model's parameter
+                            ranges and under random loading
 :func:`check_hand_blocks`   hand-derived Jacobian blocks against autodiff
 :func:`check_solution`      a hand-written return mapping's solutions against
                             the framework residual
@@ -64,6 +66,13 @@ from returnmap.verification.model import (
     check_model,
     standard_histories,
 )
+from returnmap.verification.range_check import (
+    RangeCase,
+    RangeReport,
+    check_range,
+    parameter_variants,
+    random_histories,
+)
 from returnmap.verification.umat import Umat
 
 __all__ = [
@@ -72,6 +81,12 @@ __all__ = [
     "ModelReport",
     "ModelCheck",
     "standard_histories",
+    # The model over the range it documents: parameter bounds, random loading
+    "check_range",
+    "RangeReport",
+    "RangeCase",
+    "parameter_variants",
+    "random_histories",
     # The Fortran UMAT that belongs to a model
     "Umat",
     # Hand-derived Jacobian blocks against autodiff
