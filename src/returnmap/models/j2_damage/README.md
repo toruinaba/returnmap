@@ -141,6 +141,20 @@ $$
 
 共通の検査では、9 つのクラスについて、自動微分の経路が収束することと、整合接線が中心差分と合うことを確かめている。ファミリのテストは、有効応力と $p$ の履歴が損傷の無い J2 と一致すること (弱連成) を確かめている。
 
+### 範囲の検査
+
+パラメータを 1 つずつ `param_meta` の範囲の端に置いた検査と、乱数の載荷履歴での検査 (`returnmap check --family returnmap.models.j2_damage --range`、returnmap 0.5.0) の結果は、次のとおりである。表に無い組は合格する。不合格の組は直しておらず、Issue に記録してある。「制約」の「破壊の判定は無い」が、範囲の端で現れる。
+
+| 組 | クラス | 結果 | Issue |
+|---|---|---|---|
+| `E=1000` | `J2IsotropicDamage`、`CrackClosure` | 合格する。ただし、標準の載荷履歴で $D$ が 1 を超えたまま収束している ($D$ の最大は、`J2IsotropicDamage` の 3D で 1610、平面応力で 453、1D で 369、`CrackClosure` の 3D で 1610。`CrackClosure` の平面応力と 1D は測っていない)。共通の検査は、収束と接線だけを確かめる | [#158](https://github.com/toruinaba/returnmap/issues/158) |
+| `S=0.001`、`sigma_y0=5000` | 9 クラス (`CrackClosure` の 3D の `sigma_y0=5000` を除く) | 不合格。載荷履歴の途中で $D$ が大きくなり (0.6 から 1 の近く、または 1 を超える)、収束しなくなる。`Unilateral` は例外を送出する。`CrackClosure` の 3D の `sigma_y0=5000` は、$D$ が 438 のまま合格する | [#158](https://github.com/toruinaba/returnmap/issues/158)、[#159](https://github.com/toruinaba/returnmap/issues/159) |
+| `s=10` | 3D の 3 クラス、`Unilateral` の平面応力と 1D | 不合格。3D は、標準の載荷履歴の途中で収束しなくなる ($D$ は 0.008 以下)。原因は調べていない。`Unilateral` は例外を送出する | [#158](https://github.com/toruinaba/returnmap/issues/158)、[#159](https://github.com/toruinaba/returnmap/issues/159) |
+| `nu=0.49` | 3D の 3 クラス | 不合格。多軸の履歴で収束しなくなる ($D$ は 0.35 以上)。`Unilateral` は例外を送出する | [#158](https://github.com/toruinaba/returnmap/issues/158)、[#159](https://github.com/toruinaba/returnmap/issues/159) |
+| `sigma_y0=1`、`S=1000` | `Unilateral` (`S=1000` は 3D) | 不合格。$\tilde{\boldsymbol\sigma} \to \boldsymbol\sigma$ の逆算が収束せず、例外を送出する | [#159](https://github.com/toruinaba/returnmap/issues/159) |
+| `E=1000` | `Unilateral` の 3 クラス | 不合格。最初の塑性ステップで収束しない (3D では $D = 0$ のままである)。原因は調べていない | [#159](https://github.com/toruinaba/returnmap/issues/159) |
+| `H=0` | 1D の 3 クラス | 不合格。接線と中心差分の差が 1.4e-5 になる (許容値は 1e-5)。接線は正しく、差分を取る応力が NR の許容値までしか解かれていないためである (許容値を 1e-13 にすると、差は 1.3e-7 以下になる) | [#157](https://github.com/toruinaba/returnmap/issues/157) |
+
 ## 文献
 
 - J. Lemaitre (1985), *A continuous damage mechanics model for ductile fracture*, Journal of Engineering Materials and Technology.

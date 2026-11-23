@@ -93,6 +93,14 @@ $$
 - ファミリのテストは、飽和応力、背応力がそれぞれの速さで飽和すること、1 項だけ残すと背応力 1 つのモデルとビット単位で一致することを確かめている。
 - 引張とせん断が同じ曲線になること、単軸応力の応答が 1D・3D・平面応力で一致することは、全モデルに共通のテストで確かめている。
 
+### 範囲の検査
+
+パラメータを 1 つずつ `param_meta` の範囲の端に置いた検査と、乱数の載荷履歴での検査 (`returnmap check --family returnmap.models.chaboche_multi --range`、returnmap 0.5.0) の結果は、次のとおりである。表に無い組は合格する。不合格の組は直しておらず、Issue に記録してある。
+
+| 組 | クラス | 結果 | Issue |
+|---|---|---|---|
+| `Qinf1=-1000` | 3D、平面応力、1D | 不合格。等方硬化 $R$ が −249 MPa まで下がり、降伏応力 (250 MPa) が 0 に近づいて、収束しなくなる。$\sigma_{y0} + \sum Q_{\infty i} > 0$ を外れる組である。`Qinf1=-200` は合格する | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+
 ## 文献
 
 J.-L. Chaboche (1986), *Time-independent constitutive theories for cyclic plasticity*, International Journal of Plasticity.

@@ -374,7 +374,7 @@ J2Isotropic1D over its range: every case passes
 | 乱数の種 | `check_range(model, seed=...)`。同じモデルと種に対して、同じ履歴になる |
 | パラメータの組の例外 | `check_model` が解法の例外で終わった組は、`could not be checked` として不合格になる |
 | プログラムの誤り | `TypeError`、`AttributeError` などは、解けない増分として扱わず、そのまま送出する |
-| 差分の参照の精度 | 差分を取る応力は、既定の許容値で解く。許容値は試行応力に比例するため、降伏ひずみの数十倍の増分では、正しい接線と差分の差が `1e-5` 程度になり、不合格になる場合がある (`YUKinematic1D` の `random large` の 1 点) |
+| 差分の参照の精度 | 差分を取る応力は、既定の許容値で解く。許容値は試行応力に比例するため、降伏ひずみの数十倍の増分や、弾性剛性に比べて小さい接線では、正しい接線と差分の差が `1e-5` 程度になり、不合格になる場合がある (`YUKinematic1D` の `random large` の 1 点、`OWKinematic1D` の `gamma=10000`、損傷モデルの 1D の `H=0`、`YUKinematic1D` の `k=0`。[#157](https://github.com/toruinaba/returnmap/issues/157)) |
 | 接線の差分の刻み | `check_model` と `check_range` は、`1e-7` と、ステップの応力が弾性で対応するひずみ (`max|σ| / max|C|`) の 1 万分の 1 のうち、小さいほうを用いる。`max|C|` は弾性剛性の最大成分で、ヤング率の 1.3 倍程度である。降伏ひずみが 1e-3 程度のモデルでも、応力が小さいステップでは `1e-7` より小さくなる |
 
 パラメータの範囲は、パラメータごとに独立に与えられている。1 つだけを端に置くと意味を失うモデル (境界面が降伏面の内側に入る、など) は、検査する組をファミリの `verification.py` に `variants(model)` として宣言する。`check_range` は、宣言があればそれを `parameter_variants(model)` の代わりに用いる。
