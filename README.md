@@ -20,9 +20,9 @@
 **使う** — PyPI には未公開のため、GitHub のタグから入れる (依存は numpy、scipy、autograd)。
 
 ```bash
-pip install "git+https://github.com/toruinaba/returnmap@v0.4.1"
+pip install "git+https://github.com/toruinaba/returnmap@v0.5.0"
 # 作図も行う場合は matplotlib を追加する:
-pip install "returnmap[examples] @ git+https://github.com/toruinaba/returnmap@v0.4.1"
+pip install "returnmap[examples] @ git+https://github.com/toruinaba/returnmap@v0.5.0"
 ```
 
 **開発する** — リポジトリを取ってきて、テストや Fortran のビルドまで含めた環境を作る:

@@ -3,7 +3,23 @@
 このファイルは、利用者から見える変更を版ごとにまとめる。設計の経緯と理由は
 [`docs/design/api-redesign.md`](docs/design/api-redesign.md) にある。
 
-## 未リリース
+## 0.5.0(2026-11-23)
+
+モデルの仕様書(ファミリの `README.md`)から実装し、検査で確かめる進め方に要るものを足した: パラメータの
+範囲の端と乱数の載荷での検査、ABAQUS の入口の検査、検査のコマンド、仕様書と指示文の雛形。Ohno-Wang 型の 3D に
+手書きの解法と UMAT を足した。組み込みモデルの収束したステップの結果は、`OWKinematic3D` の既定の経路
+(手書きの解法になる。自動微分との差は 1e-9 以下)を除いて 0.4.1 から変わらない。
+
+**移行**
+
+| 対象 | 0.4.1 | 0.5.0 |
+|---|---|---|
+| 入口 `umat` を持たない f2py モジュールを宣言した `Umat` | `check_model` は合格 | `Umat(..., entry=None)` と宣言する。宣言しなければ不合格 |
+| `STATEV` の並びが状態変数の宣言の順と異なる UMAT | — | `Umat(..., statev=[...])` で並びを宣言する |
+| 手書きの解法を持つモデルの UMAT | Python と `stress_tol`(既定 `1e-6`)で比べる | `1e-10`(接線 `1e-9`)で比べる |
+| `PythonIntegrator(OWKinematic3D(...))` | 自動微分で解く | 手書きの解法で解く(差は 1e-9 以下)。自動微分は `PythonNumericalIntegrator` |
+| `returnmap build --family`(UMAT の宣言が無いパッケージ) | 終了コード 1 | 終了コード 0 |
+| 雛形(`examples/model_family/`)が依存する returnmap | `v0.4.1` | `v0.5.0` |
 
 **追加**
 
