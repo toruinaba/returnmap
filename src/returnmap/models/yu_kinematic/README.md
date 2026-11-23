@@ -134,12 +134,31 @@ $$
 
 - **$\mu$ の反復**: 粗い増分で $\mu$ の内側の反復が収束しないことがあり、そのときモデルは `ValueError` を出す (非収束として扱われない)。
 - **平滑化の幅は応力の単位に依る**: ゲートの幅は MPa を前提にした値である。
+- **パラメータどうしの関係**: $B > Y$ (限界曲面が降伏曲面の外側にある)、$C_1 > C_2$、$E > E_a$ を想定している。`param_meta` の範囲はパラメータごとに与えてあり、この関係を除いていない。
 
 ## 検証
 
 - 3D と平面応力は、手書きの解・手導出のブロック (平面応力の 16 個)・手書きの接線を自動微分と照合している。
 - UMAT は 2 つとも、標準の載荷履歴 (多軸と、2 % の反転繰返しを含む) の全ステップで Python と一致する (応力・状態・接線とも 1e-15 程度)。
 - 検査には、標準の履歴に加えて 2 % の反転繰返しを使う。標準の履歴は降伏ひずみの 5 倍までで、$C_1 \to C_2$ の切り替えと停留が現れないためである。
+
+### 範囲の検査
+
+パラメータを 1 つずつ `param_meta` の範囲の端に置いた検査と、乱数の載荷履歴での検査 (`returnmap check --family returnmap.models.yu_kinematic --range`、returnmap 0.5.0) の結果は、次のとおりである。表に無い組は合格する。不合格の組は直しておらず、Issue に記録してある。UMAT はビルドしていない環境での結果である。
+
+| 組 | クラス | 結果 | Issue |
+|---|---|---|---|
+| `Y=5000`、`B=1` | 3D、平面応力、1D | 不合格。$B > Y$ を外れる | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `C_2=100000` | 3D、平面応力、1D | 不合格。$C_1 > C_2$ を外れる | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `E=1000` | 3D、平面応力、1D | 不合格。$E > E_a$ を外れ、降伏ひずみが 36 % になる。1D は $\mu$ の反復の例外を送出する | [#160](https://github.com/toruinaba/returnmap/issues/160)、[#129](https://github.com/toruinaba/returnmap/issues/129) |
+| `C_1=100000` | 3D、平面応力 | 不合格。手書きの経路が、最初の塑性ステップで収束しない。自動微分の経路は収束する | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `nu=0.49`、`Y=1` | 3D | 不合格。手書きの経路が、多軸または 2 % の反転繰返しの途中で収束しない。自動微分の経路は収束する | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `k=0`、`b=0` | 3D、平面応力 | 不合格。$\boldsymbol\beta$ が動かず、停留のゲートが常に中間の値になる。全ステップが「手導出の近似」のステップになり、手書きの接線が何とも比べられない | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `h=0` | 3D、平面応力、1D | 不合格。$\mu$ の反復の例外を送出する | [#129](https://github.com/toruinaba/returnmap/issues/129) |
+| `Rsat=0` | 3D | 不合格。手書きの経路と自動微分の経路の状態量の差が 1.1e-6 になる (許容値は 1e-6)。原因は調べていない | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `Rsat=5000` | 1D | 不合格。標準の単軸の履歴の 20 ステップ目で収束しない。原因は調べていない | [#160](https://github.com/toruinaba/returnmap/issues/160) |
+| `k=0` | 1D | 不合格。接線と中心差分の差が 3.5e-4 になる (許容値は 1e-5)。接線は正しく、差分を取る応力が NR の許容値までしか解かれていないためである (許容値を 1e-13 にすると、差は 1.8e-6 になる) | [#157](https://github.com/toruinaba/returnmap/issues/157) |
+| 乱数の載荷履歴 `random large` | 1D | 不合格。接線と中心差分の差が 1.2e-5 になる。原因は上の行と同じである | [#157](https://github.com/toruinaba/returnmap/issues/157) |
 
 ## 文献
 
