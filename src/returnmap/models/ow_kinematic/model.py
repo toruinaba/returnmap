@@ -161,8 +161,8 @@ class OWKinematic3D(OWKinematic):
 
     dimension = SOLID_3D
 
-    #: Iteration on g(w) = 0: absolute tolerance on |g| (g is dimensionless,
-    #: of order one) and the largest number of updates.
+    #: Iteration on ``g(w) = 0``: absolute tolerance on ``abs(g)`` (g is
+    #: dimensionless, of order one) and the largest number of updates.
     NEWTON_TOL = 1.0e-12
     NEWTON_MAX_ITER = 100
 
